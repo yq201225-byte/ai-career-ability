@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 职业能力转化平台 Demo</title>
+  <style>
+    :root{--ink:#111318;--muted:#667085;--line:#e5e8ee;--surface:#f6f8fb;--blue:#2563eb;--soft:#eaf1ff;--green:#10b981;--orange:#f97316}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;color:var(--ink);background:#fff}
+    .page{min-height:100vh;display:grid;grid-template-columns:280px 1fr}.side{background:#f5f7fb;border-right:1px solid var(--line);padding:24px}.brand{font-weight:860;font-size:24px;line-height:1.08;margin:12px 0 30px}.steps{display:grid;gap:10px}.steps button{height:44px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;padding:0 12px;color:#475467;font-weight:650}.steps button.active{border-color:#c6d6ff;background:#eaf1ff;color:var(--blue)}
+    main{display:grid;grid-template-rows:auto 1fr auto}.top{height:66px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 30px}.top b{font-size:17px}.top span{color:var(--muted);font-size:13px}.content{padding:34px 46px;max-width:1060px}.hero{display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start}.hero h1{font-size:34px;margin:0 0 12px}.hero p{color:var(--muted);line-height:1.7;margin:0}.phone{border:1px solid #c9d8ff;border-radius:28px;background:linear-gradient(180deg,#f8fbff,#eef4ff);padding:24px 16px;box-shadow:0 18px 45px rgba(37,99,235,.13)}.bubble{border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px;margin:10px 0;font-size:13px;line-height:1.45}.bubble.ai{background:var(--soft);border-color:#bfd0ff;color:#174cc7}.board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}.card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:16px}.card small{font-size:11px;color:var(--blue);font-weight:800;text-transform:uppercase}.card h2{font-size:18px;margin:9px 0}.card p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}.gate{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.gate div{border-radius:8px;padding:13px;color:#fff}.gate b{display:block;margin-bottom:6px}.confirmed{background:var(--green)}.pending{background:var(--orange)}.rejected{background:#475467}
+    .input{margin:0 34px 26px;background:var(--surface);border-radius:22px;padding:12px}.box{min-height:86px;border:1px solid var(--line);border-radius:18px;background:#fff;padding:16px;color:#98a2b3}.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;color:#475467;font-size:13px}
+    @media(max-width:900px){.page,.hero{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.content{padding:26px 20px}.board,.gate{grid-template-columns:1fr}.input{margin:0 16px 18px}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <aside class="side">
+      <div class="brand">AI CAREER<br>ABILITY</div>
+      <nav class="steps" aria-label="Demo steps"><button class="active">目标确认</button><button>AI 学习助手</button><button>代码训练</button><button>作品集表达</button><button>能力资产中心</button></nav>
+    </aside>
+    <main>
+      <header class="top"><b>AI 职业能力转化平台 V0.4</b><span>Personal Product Demo</span></header>
+      <section class="content">
+        <div class="hero">
+          <div><h1>把学习和项目经历沉淀成可信能力资产</h1><p>平台先确认用户目标，再把问答、练习、项目事实和作品集草稿保存下来。核心机制是事实门禁：只有 confirmed 事实进入对外表达。</p></div>
+          <div class="phone"><div class="bubble ai">先确认目标：AI 产品经理校招 / Agent 产品方向</div><div class="bubble">我做过项目，但不知道怎么写进作品集。</div><div class="bubble ai">已抽取事实点，请确认哪些可以公开。</div><div class="bubble">保存到能力资产中心。</div></div>
+        </div>
+        <div class="board">
+          <article class="card"><small>Learning</small><h2>AI 学习助手</h2><p>把概念解释、追问和复习卡片关联到目标岗位能力。</p></article>
+          <article class="card"><small>Practice</small><h2>代码训练</h2><p>从代码理解进入练习、提示、答案和复盘，不停留在看懂。</p></article>
+          <article class="card"><small>Portfolio</small><h2>作品集表达</h2><p>将项目事实转成结构化表达，并保留确认状态。</p></article>
+        </div>
+        <div class="card" style="margin-top:16px"><small>Fact Gate</small><h2>事实门禁</h2><div class="gate"><div class="confirmed"><b>confirmed</b>可进入作品集草稿</div><div class="pending"><b>pending</b>继续追问或补证据</div><div class="rejected"><b>rejected</b>不进入公开表达</div></div></div>
+      </section>
+      <section class="input"><div class="box">输入你的学习目标或项目经历，例如：我想转 AI 产品，但项目经历不知道怎么表达...</div><div class="chips"><span class="chip">目标确认</span><span class="chip">事实抽取</span><span class="chip">草稿生成</span><span class="chip">资产沉淀</span></div></section>
+    </main>
+  </div>
+</body>
+</html>

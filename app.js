@@ -14,7 +14,7 @@
 
   const BASE = {
     route: 'home', routeHistory: [], codeTab: 'current', homeDraft: '', conversationTopic: 'welcome',
-    conversation: [{ role: 'ai', text: '你好，我可以先帮你把一个问题讲明白，再把它推进成练习、项目或可信表达。', actions: [] }],
+    conversation: [{ role: 'ai', text: '我是 AI 学习助手。你可以直接问 AI 概念、贴代码、说项目经历；你卡在哪里，我先回答当前问题，再推荐下一步。', actions: [] }],
     userGoalProfile: { target: '', level: '', availableTime: '' }, currentCodeContext: null,
     codeSession: null, trainingProgress: null, quiz: { index: 0, answers: [] }, practice: { step: 0, answers: [] },
     learningRecords: [], practiceRecords: [], workRecords: [], codeRecords: [], portfolioDrafts: [],
@@ -51,6 +51,9 @@
     state.onboardingComplete = read(KEYS.onboarding, state.onboardingComplete);
     state.factCandidates = [...state.confirmedFacts, ...state.pendingFacts, ...state.rejectedFacts].sort((a, b) => (a.order || 0) - (b.order || 0));
     state.conversation = Array.isArray(state.conversation) && state.conversation.length ? state.conversation : BASE.conversation;
+    if (state.conversation[0]?.role === 'ai' && /你好，我可以先帮你把一个问题讲明白/.test(state.conversation[0].text)) {
+      state.conversation[0] = { ...BASE.conversation[0] };
+    }
     state.quiz = { index: 0, answers: [], ...(state.quiz || {}) };
     state.practice = { step: 0, answers: [], responses: [], draft: '', feedback: null, ...(state.practice || {}) };
     state.practice.responses = Array.isArray(state.practice.responses) ? state.practice.responses : [];
@@ -233,14 +236,42 @@
     const recommended = state.codeSession ? ['继续上次代码训练', `${state.codeSession.title} · 已完成 ${state.trainingProgress?.step || 0}/5 步`, 'continue-code', '代码训练'] : state.project && state.project.stage < stages.length ? ['继续项目路线', `${state.project.title} · 阶段 ${state.project.stage + 1}/6`, 'continue-project', '项目路线'] : [goal === 'pm' ? '从项目孵化开始' : goal === 'portfolio' ? '确认一条可写事实' : goal === 'code' ? '开始一段代码理解' : '从一个明确问题开始', goal === 'pm' ? '先明确方向、时间与期待产物' : goal === 'portfolio' ? '确认事实后，再生成可信表达' : goal === 'code' ? '粘贴一段看不懂的代码，我会先解释整体作用' : '问一个概念问题，再决定下一步', goal === 'pm' ? 'start-incubation' : goal === 'portfolio' ? 'portfolio-facts' : goal === 'code' ? 'go-home-code' : 'ask-rag', '今日推进'];
     const assetTotal = state.learningRecords.length + state.codeRecords.length + state.workRecords.length + state.portfolioDrafts.length;
     return page(`<section class="home-page"><div class="home-greeting"><div><p class="eyebrow">当前目标</p><h1>你好，${esc(goalLabel(goal))}</h1></div><button class="goal-switch" data-action="open-goal-setup">调整${icon('›')}</button></div><article class="today-card"><div class="today-card-head"><span>${icon('✦')} ${recommended[3]}</span><small>${assetTotal} 条能力资产</small></div><h2>${recommended[0]}</h2><p>${esc(recommended[1])}</p><footer><span class="today-progress"><i></i>现在就做一小步</span>${button('继续', recommended[2], { className: 'today-action' })}</footer></article><div class="section-head home-section-head"><h2 class="section-title">你可以从这里开始</h2><button class="text-action" data-action="review-history">回顾对话</button></div><div class="home-feature-grid">${cards.map(([type, title, note, glyph, action]) => `<button class="home-feature ${type}" data-action="${action}"><span>${icon(glyph)}</span><b>${title}</b><small>${note}</small>${icon('›')}</button>`).join('')}</div><div class="home-summary-grid"><button class="summary-entry" data-action="review-history">${icon('↺')}<span><b>回顾上次对话</b><small>${last ? esc(last.title) : '还没有已保存的对话'}</small></span>${icon('›')}</button><button class="summary-entry" data-action="nav" data-route="me">${icon('▣')}<span><b>能力资产中心</b><small>${assetTotal ? `已沉淀 ${assetTotal} 条，可继续回看与使用` : '完成学习、训练或项目后会沉淀在这里'}</small></span>${icon('›')}</button></div>
-      <section class="conversation-panel home-conversation"><div class="conversation-head"><div><b>AI 学习助手</b><small>理解问题，判断下一步</small></div><span class="role-badge">开放问答</span></div><div class="home-prompt-row"><button data-action="ask-rag">什么是 RAG？</button><button data-action="go-home-code">看懂一段代码</button><button data-action="start-incubation">我想做个项目</button></div><div class="conversation-list" data-chat-key="home">${state.conversation.map(message).join('')}</div><label class="ask-box">${icon('⌕')}<input data-field="homeDraft" value="${esc(state.homeDraft)}" placeholder="向 AI 助手提问..."><button class="send" data-action="ask" aria-label="发送">${icon('↗')}</button></label></section>
+      <section class="conversation-panel home-conversation"><div class="conversation-head"><div><b>AI 学习助手</b><small>理解问题，判断下一步</small></div><span class="role-badge">开放问答</span></div><p class="assistant-intro">你可以直接问 AI 概念、贴代码、说项目经历；我先回答当前问题，再推荐下一步。</p><div class="home-prompt-row"><button data-action="ask-rag">什么是 RAG？</button><button data-action="go-home-code">看懂一段代码</button><button data-action="start-incubation">我想做个项目</button></div><div class="conversation-list" data-chat-key="home">${state.conversation.map(message).join('')}</div><label class="ask-box">${icon('⌕')}<input data-field="homeDraft" value="${esc(state.homeDraft)}" placeholder="向 AI 学习助手提问..."><button class="send" data-action="ask" aria-label="发送">${icon('↗')}</button></label></section>
     </section>`);
   }
 
   function classify(text) {
     if (/代码|报错|function|def|return|state|next|error|API|JSON|response|```/i.test(text)) return 'code';
-    if (/不知道|从哪开始|迷茫|怎么学|转 AI 产品|AI PM|想学 AI/i.test(text)) return 'fuzzy';
-    return 'concept';
+    if (/没有项目|没项目|还没有项目|做个项目|想做项目/i.test(text)) return 'no-project';
+    if (/参与.{0,8}项目|项目经历|简历|作品集|写厉害点|包装一下/i.test(text)) return 'experience';
+    if (/LLM.{0,10}RAG|RAG.{0,10}(区别|不同)|大模型.{0,8}检索/i.test(text)) return 'llm-rag';
+    if (/什么是 RAG|RAG 是什么|RAG.*原理|检索增强/i.test(text)) return 'rag';
+    if (/什么是 Agent|Agent.*(是什么|原理|做什么)|智能体/i.test(text)) return 'agent';
+    if (/Prompt|提示词/i.test(text)) return 'prompt';
+    if (/AI 产品经理|AI PM|PRD|需求分析|产品方案/i.test(text)) return 'pm';
+    if (/AI 运营|内容运营|内容怎么做/i.test(text)) return 'content';
+    if (/不知道|从哪开始|迷茫|怎么学|转 AI 产品|想学 AI|学 AI/i.test(text)) return 'fuzzy';
+    return 'general';
+  }
+  function learningActions() {
+    return [{ label: '继续追问', action: 'ask-rag-followup' }, { label: '做 3 道小测', action: 'start-quiz' }, { label: '进入 AI 实操', action: 'start-practice' }, { label: '保存学习记录', action: 'save-learning' }];
+  }
+  function homeReply(intent, query) {
+    const prior = state.conversationTopic;
+    if (/举例|例子|怎么用/.test(query) && prior === 'rag') return { topic: 'rag', text: '举个例子：员工问“报销怎么申请”，系统先从公司的报销制度里找到相关条款，再基于条款组织回答。资料负责提供依据，模型负责把依据说清楚。', actions: learningActions() };
+    if (/举例|例子|怎么用/.test(query) && prior === 'agent') return { topic: 'agent', text: '例如用户说“我想做一个 AI 产品项目”，Agent 可以先判断目标是否明确；明确时推荐项目路径，不明确时先追问时间和基础。重点不是“多说一句”，而是根据状态选择下一步。', actions: [{ label: '做一个项目', action: 'start-incubation' }, { label: '看懂相关代码', action: 'go-home-code' }] };
+    const replies = {
+      rag: { text: 'RAG 可以理解为“开卷回答”：先从相关资料里找依据，再基于这些内容组织回答。它适合知识库问答，也能减少只凭模型记忆回答带来的偏差。', actions: learningActions() },
+      'llm-rag': { text: 'LLM 更像负责理解和生成的“大脑”；RAG 则是在回答前先从指定资料里找依据，再交给模型组织答案。一个提供生成能力，一个让回答基于资料。', actions: learningActions() },
+      agent: { text: 'Agent 不是单纯多轮聊天，而是能根据目标、当前状态和规则决定下一步动作的协作流程。它可以回答、追问、调用工具或转入固定任务，但每一步都应有边界。', actions: [{ label: '看一个路由例子', action: 'go-home-code' }, { label: '继续问 Agent', action: 'ask-rag-followup' }] },
+      prompt: { text: 'Prompt 是你给 AI 的任务说明。一个更有效的 Prompt 通常会写清目标、已有材料、输出格式和限制条件；它不是“越长越好”，而是让任务边界更明确。', actions: [{ label: '做一次任务实操', action: 'start-practice' }, { label: '保存学习记录', action: 'save-learning' }] },
+      pm: { text: 'AI 产品工作不是只写 PRD。你需要先判断问题是否明确，再决定哪里由 AI 协助、哪里必须由规则和用户确认。对于作品集，重点是留下需求、流程、Demo 和走查这些可回看的证据。', actions: [{ label: '开始项目孵化', action: 'start-incubation' }, { label: '看看可写事实', action: 'start-experience' }] },
+      content: { text: '做 AI 内容或运营时，先确认受众、内容目标、事实来源和审核边界。AI 可以协助拆任务和检查表达，但未经验证的数据、效果和职责不能直接写进结论。', actions: [{ label: '做一次内容实操', action: 'start-practice' }, { label: '整理真实经历', action: 'start-experience' }] },
+      experience: { text: '我可以先帮你把经历说清楚，但不会直接把“参与”改写成“主导”。接下来会逐步澄清你的职责、交付物、数据、协作边界和证明材料，再由你确认哪些能写。', actions: [{ label: '把经历说清楚', action: 'start-experience' }, { label: '查看作品集', action: 'nav', data: { route: 'portfolio' } }] },
+      'no-project': { text: '没有项目时，先不要生成一段看起来完整的作品集表达。可以从一个做得完的小项目开始：先根据方向、时间、基础和期待产物推荐路径，再逐步留下真实交付物。', actions: [{ label: '开始项目孵化', action: 'start-incubation' }, { label: '先看一个概念', action: 'ask-rag' }] },
+      general: { text: '我可以先帮你把当前问题拆清楚。你可以直接问一个 AI 概念、贴一段看不懂的代码，或说说你想做的项目和已有经历；我会按不同任务给你不同的下一步。', actions: [{ label: '什么是 RAG？', action: 'ask-rag' }, { label: '看懂一段代码', action: 'go-home-code' }, { label: '说说项目经历', action: 'start-experience' }] }
+    };
+    return { topic: intent, ...(replies[intent] || replies.general) };
   }
   function askHome() {
     const query = input('homeDraft') || state.homeDraft;
@@ -251,7 +282,7 @@
       appendMessage('ai', '看起来你已经理解了大概意思。要不要把这段代码变成一组练习，检查自己是不是真的会了？', [{ label: '生成代码训练', action: 'create-code-training' }, { label: '继续追问', action: 'code-followup' }]);
       return;
     }
-    const intent = classify(query); state.conversationTopic = intent;
+    const intent = classify(query);
     if (intent === 'code') {
       const partial = query.length > 560;
       state.currentCodeContext = {
@@ -267,8 +298,9 @@
       appendMessage('ai', '我先不直接给你一大套学习计划。你现在更想先解决哪类问题？', goalActions());
       return;
     }
-    const difference = /LLM.*RAG|RAG.*区别/i.test(query);
-    appendMessage('ai', difference ? 'LLM 更像负责理解和生成的“大脑”；RAG 则是在回答前先从指定资料里找依据，再交给模型组织答案。一个负责生成能力，一个负责让回答基于资料。' : 'RAG 可以理解为“开卷回答”：先从相关资料里找依据，再基于这些内容组织回答。它适合知识库问答，也能减少只凭模型记忆回答带来的偏差。', [{ label: '继续追问', action: 'ask-rag-followup' }, { label: '做 3 道小测', action: 'start-quiz' }, { label: '进入 AI 实操', action: 'start-practice' }, { label: '保存学习记录', action: 'save-learning' }]);
+    const reply = homeReply(intent, query);
+    state.conversationTopic = reply.topic;
+    appendMessage('ai', reply.text, reply.actions);
   }
   function goalActions() { return [{ label: '看懂 AI 概念', action: 'clarify-choice', data: { value: 'concept' } }, { label: '做一个作品集项目', action: 'clarify-choice', data: { value: 'project' } }, { label: '补代码理解能力', action: 'clarify-choice', data: { value: 'code' } }, { label: '整理简历 / 作品集', action: 'clarify-choice', data: { value: 'portfolio' } }]; }
   function clarifyActions() { return [{ label: '刚开始了解', action: 'clarify-choice', data: { value: 'beginner' } }, { label: '看过一些概念', action: 'clarify-choice', data: { value: 'aware' } }, { label: '已有实践经验', action: 'clarify-choice', data: { value: 'practiced' } }]; }

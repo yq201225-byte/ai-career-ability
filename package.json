@@ -1,0 +1,7 @@
+{
+  "name": "ai-career-ability-demo",
+  "private": true,
+  "scripts": {
+    "build": "node tools/build.mjs"
+  }
+}

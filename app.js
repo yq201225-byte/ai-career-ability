@@ -161,6 +161,10 @@
       state.ui.chatFollow[key] = false;
       list.addEventListener('scroll', () => { state.ui.chatScrolls[key] = list.scrollTop; });
     });
+    if (state.ui.focusHomeConversation) {
+      state.ui.focusHomeConversation = false;
+      window.setTimeout(() => document.querySelector('.home-conversation')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }
   }
 
   function header(backButton = false) {
@@ -168,7 +172,7 @@
   }
   function nav() {
     const items = [['home', '首页', '⌂'], ['code', '代码', '⌘'], ['portfolio', '作品集', '▣'], ['me', '我的', '●']];
-    const active = state.route.startsWith('home') ? 'home' : state.route.startsWith('code') ? 'code' : state.route.startsWith('portfolio') ? 'portfolio' : 'me';
+    const active = ['home', 'quiz', 'practice', 'practice-hub', 'goal-setup'].includes(state.route) ? 'home' : state.route.startsWith('code') ? 'code' : state.route.startsWith('portfolio') ? 'portfolio' : 'me';
     return `<nav class="nav">${items.map(([key, label, glyph]) => `<button class="${key === active ? 'active' : ''}" data-action="nav" data-route="${key}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav>`;
   }
   function page(content, options = {}) {
@@ -239,7 +243,7 @@
     const goal = state.userGoalProfile.target || 'explore';
     const cards = [
       ['concept', '概念答疑', '先把一个问题讲明白', '◎', 'ask-rag'], ['pm', 'AI 实操', '完成一次可检查的产品任务', '◆', 'start-composite'],
-      ['code', '代码理解', '把看过的代码变成训练', '⌘', 'go-home-code'], ['portfolio', '作品集表达', '先确认真实内容再表达', '▣', 'start-experience']
+      ['code', '代码理解', '进入训练库，练会一段代码', '⌘', 'open-code'], ['portfolio', '作品集表达', '先确认真实内容再表达', '▣', 'start-experience']
     ].sort((a, b) => (a[0] === goal ? -1 : b[0] === goal ? 1 : 0));
     const latestCase = state.trainingCases[0];
     const recommended = state.codeSession ? ['继续上次代码训练', `${state.codeSession.title} · 已完成 ${state.trainingProgress?.step || 0}/5 步`, 'continue-code', '代码训练'] : latestCase ? ['回看最近训练案例', `${latestCase.title} · 已保存检查与复盘`, 'open-training-cases', '训练案例'] : [goal === 'pm' ? '开始一次项目化综合练习' : goal === 'portfolio' ? '确认一条可写事实' : goal === 'code' ? '开始一段代码理解' : '从一个明确问题开始', goal === 'pm' ? '完成需求判断、状态设计与测试复盘' : goal === 'portfolio' ? '确认事实后，再生成可信表达' : goal === 'code' ? '粘贴一段看不懂的代码，我会先解释整体作用' : '问一个概念问题，再决定下一步', goal === 'pm' ? 'start-composite' : goal === 'portfolio' ? 'portfolio-facts' : goal === 'code' ? 'go-home-code' : 'ask-rag', '今日推进'];
@@ -534,7 +538,10 @@
   function portfolio() {
     const plan = targetPlan();
     const latestCase = state.trainingCases[0];
-    return page(`<section><p class="eyebrow">作品集</p><h1 class="hero-title">先确认内容来源，<br>再让表达更有说服力。</h1><div class="notice"><strong>围绕“${esc(goalLabel(plan.id))}”：</strong>${esc(plan.portfolioHint)}</div><div class="route-choice glass-card"><button data-action="start-experience"><span class="round-icon">${icon('✓')}</span><span><b>真实经历</b><small>逐步补齐职责、产物、数据、协作和证明材料</small></span>${icon('›')}</button><button data-action="${latestCase ? 'use-training-case' : 'start-composite'}" ${latestCase ? 'data-index="0"' : ''}><span class="round-icon green">${icon('✦')}</span><span><b>个人训练案例</b><small>${latestCase ? `${esc(latestCase.title)} · 可作为训练案例整理` : '先完成一次项目化综合练习'}</small></span>${icon('›')}</button><button data-action="portfolio-facts"><span class="round-icon amber">${icon('◆')}</span><span><b>确认哪些能写</b><small>真实经历与训练案例都要逐条确认</small></span>${icon('›')}</button><button data-action="portfolio-drafts"><span class="round-icon green">${icon('▣')}</span><span><b>作品集草稿</b><small>${state.portfolioDrafts.length ? `已有 ${state.portfolioDrafts.length} 份草稿` : '先确认一条可写内容'}</small></span>${icon('›')}</button></div><p class="quiet-note">真实经历可以写真实职责与已证明结果；训练案例只能写为独立训练，不得写成上线、团队或工作项目。</p></section>`);
+    const progress = state.factCandidates.length
+      ? `当前有 ${state.confirmedFacts.length} 条已确认内容、${state.pendingFacts.length} 条待补充。完成确认后，草稿会保存在“我的 · 作品集草稿”。`
+      : '选择一种内容来源后，系统会先帮助你澄清或读取训练记录，再进入确认与草稿步骤。';
+    return page(`<section><p class="eyebrow">作品集</p><h1 class="hero-title">先确认内容来源，<br>再让表达更有说服力。</h1><div class="notice"><strong>围绕“${esc(goalLabel(plan.id))}”：</strong>${esc(plan.portfolioHint)}</div><div class="route-choice glass-card"><button data-action="start-experience"><span class="round-icon">${icon('✓')}</span><span><b>真实经历</b><small>逐步补齐职责、产物、数据、协作和证明材料</small></span>${icon('›')}</button><button data-action="${latestCase ? 'use-training-case' : 'start-composite'}" ${latestCase ? 'data-index="0"' : ''}><span class="round-icon green">${icon('✦')}</span><span><b>个人训练案例</b><small>${latestCase ? `${esc(latestCase.title)} · 可作为训练案例整理` : '先完成一次项目化综合练习'}</small></span>${icon('›')}</button></div><section class="portfolio-flow-note"><span class="round-icon amber">${icon('◆')}</span><div><b>确认与保存会在流程中完成</b><small>${esc(progress)}</small></div></section><p class="quiet-note">真实经历可以写真实职责与已证明结果；训练案例只能写为独立训练，不得写成上线、团队或工作项目。</p></section>`);
   }
   function beginExperience() {
     if (!state.experienceFlow) state.experienceFlow = { step: 0, draft: '', messages: [{ role: 'ai', text: '先从一段真实经历开始。接下来我会逐步确认职责、交付物、数据、协作边界和证明材料，不会替你补事实。', actions: [] }, { role: 'ai', text: experiencePrompts[0], actions: [] }], answers: [] };
@@ -710,9 +717,9 @@
     else if (action === 'notice') flash('当前没有新的提醒');
     else if (action === 'review-history') state.ui.modal = 'history';
     else if (action === 'ask') askHome();
-    else if (action === 'ask-rag') { state.homeDraft = '什么是 RAG？'; askHome(); }
+    else if (action === 'ask-rag') { state.homeDraft = '什么是 RAG？'; state.ui.focusHomeConversation = true; askHome(); }
     else if (action === 'ask-rag-followup') { appendMessage('ai', '如果你愿意，可以继续问“LLM 和 RAG 有什么区别”，或者直接用小测检查理解。', [{ label: '做 3 道小测', action: 'start-quiz' }]); }
-    else if (action === 'go-home-code') { move('home'); state.homeDraft = '我想看懂一段 Agent 路由函数'; }
+    else if (action === 'go-home-code') { state.codeTab = state.codeSession ? 'current' : 'library'; move('code'); flash('已进入代码训练，可选择基础小课或继续上次训练。'); }
     else if (action === 'code-followup') { state.currentCodeContext?.askedPoints.push('state / next / return'); appendMessage('ai', 'state 可以理解为当前流程状态，next 是下一步动作，return 则把这个决定交给后续流程。', [{ label: '生成代码训练', action: 'create-code-training' }]); }
     else if (action === 'create-code-training') startCodeTraining();
     else if (action === 'clarify-choice') chooseClarify(node.dataset.value);

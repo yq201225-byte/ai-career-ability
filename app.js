@@ -22,10 +22,12 @@
     historyItems: [], onboardingComplete: false, goalChoice: '', assetView: null, assetRecord: null, draftEditor: null, viewingDraft: null, ui: { modal: null, toast: null, loading: null, pendingDelete: null, undo: null, chatScrolls: {}, chatFollow: {} }
   };
 
+  // Public Demo data belongs to this tab only: refresh can continue the walkthrough,
+  // while closing the tab leaves the next visitor with a clean experience.
   const read = (key, fallback) => {
-    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch (_) { return fallback; }
+    try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch (_) { return fallback; }
   };
-  const save = (key, value) => { localStorage.setItem(key, JSON.stringify(value)); };
+  const save = (key, value) => { sessionStorage.setItem(key, JSON.stringify(value)); };
   const esc = (value = '') => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const icon = glyph => `<i class="glyph" aria-hidden="true">${glyph}</i>`;
   const uid = prefix => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -49,7 +51,7 @@
     state.materialReferences = read(KEYS.materialReferences, state.materialReferences);
     state.historyItems = read(KEYS.historyItems, state.historyItems);
     state.onboardingComplete = read(KEYS.onboarding, state.onboardingComplete);
-    // Migrate prior local records once. They remain user data, but the current UI only uses claims.
+    // Keep compatibility with any earlier temporary claim keys from this same tab.
     if (!state.portfolioClaims.length) {
       const oldClaims = [...read('confirmedFacts', []), ...read('pendingFacts', []), ...read('rejectedFacts', [])];
       state.portfolioClaims = oldClaims.map(item => ({
@@ -107,6 +109,19 @@
   }
 
   let state = hydrate();
+
+  function freshState() { return JSON.parse(JSON.stringify(BASE)); }
+  function clearExperienceStorage() {
+    Object.values(KEYS).forEach(key => {
+      try { sessionStorage.removeItem(key); } catch (_) { /* Storage may be unavailable in restrictive previews. */ }
+    });
+  }
+  function restartExperience() {
+    clearExperienceStorage();
+    state = freshState();
+    state.route = 'goal-setup';
+    state.ui.toast = { message: '已开始一段新的体验', undo: false };
+  }
 
   function approvedClaims() { return state.portfolioClaims.filter(item => item.approved); }
   // Keeps pre-refactor local records readable without exposing the retired fact-verification flow.
@@ -182,7 +197,7 @@
   }
 
   function header(backButton = false) {
-    return `<header class="topbar">${backButton ? `<button class="back" data-action="back" aria-label="返回">${icon('‹')}</button><span class="brand">AI Career</span>` : `<div class="brand"><span class="brand-mark">${icon('A')}</span>AI Career</div>`}<button class="icon-button" data-action="notice" aria-label="消息提醒">${icon('◌')}</button></header>`;
+    return `<header class="topbar">${backButton ? `<button class="back" data-action="back" aria-label="返回">${icon('‹')}</button><span class="brand">AI Career</span>` : `<div class="brand"><span class="brand-mark">${icon('A')}</span>AI Career</div>`}<button class="icon-button" data-action="restart-demo" aria-label="重新开始体验" title="重新开始体验">${icon('↺')}</button></header>`;
   }
   function nav() {
     const items = [['home', '首页', '⌂'], ['code', '代码', '⌘'], ['practice', '实操', '✦'], ['portfolio', '作品集', '▣'], ['me', '我的', '●']];
@@ -754,6 +769,7 @@
 
   function modal() {
     if (!state.ui.modal) return '';
+    if (state.ui.modal === 'restart-demo') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">一次性体验</span><h2>重新开始本次体验？</h2><p>当前标签页里的提问、训练和记录将被清除，并回到首次目标设置。关闭标签页后，这些体验内容也会自动清除。</p><div class="action-row">${button('重新开始', 'confirm-restart-demo')}${button('继续当前体验', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     if (state.ui.modal === 'profile') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">目标设置</span><h2>调整你的学习目标</h2><label>目标<input data-field="profileTarget" value="${esc(state.userGoalProfile.target)}" placeholder="例如：转向 AI 产品"></label><label>基础<input data-field="profileLevel" value="${esc(state.userGoalProfile.level)}" placeholder="例如：了解基础概念"></label><label>可投入时间<input data-field="profileTime" value="${esc(state.userGoalProfile.availableTime)}" placeholder="例如：每周 6–8 小时"></label><div class="action-row">${button('保存设置', 'save-profile')}${button('取消', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     if (state.ui.modal === 'history') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">对话回顾</span><h2>最近问过的问题</h2>${state.historyItems.length ? `<div class="history-list">${state.historyItems.slice(0, 6).map(item => `<div><b>${esc(item.title)}</b><small>${esc(item.savedAt)}</small></div>`).join('')}</div>` : '<p>还没有已保存的对话。</p>'}<div class="action-row">${button('继续当前对话', 'close-modal')}${button('关闭', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     if (state.ui.modal === 'delete') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">删除确认</span><h2>确定删除这条记录吗？</h2><p>删除后可在本次提示中撤销；关闭提示后会保持删除状态。</p><div class="action-row">${button('确认删除', 'confirm-delete')}${button('保留记录', 'close-modal', { className: 'ghost' })}</div></section></div>`;
@@ -795,7 +811,8 @@
     else if (action === 'confirm-goal') { if (!state.goalChoice) flash('请选择一个当前优先目标，或直接跳过。'); else { state.userGoalProfile = { ...state.userGoalProfile, target: state.goalChoice }; state.onboardingComplete = true; move('home', { history: false }); flash('目标已保存，首页推荐已调整'); } }
     else if (action === 'skip-goal') { state.goalChoice = 'explore'; state.userGoalProfile = { ...state.userGoalProfile, target: 'explore' }; state.onboardingComplete = true; move('home', { history: false }); }
     else if (action === 'open-goal-setup') { state.goalChoice = state.userGoalProfile.target || ''; move('goal-setup'); }
-    else if (action === 'notice') flash('当前没有新的提醒');
+    else if (action === 'restart-demo') state.ui.modal = 'restart-demo';
+    else if (action === 'confirm-restart-demo') restartExperience();
     else if (action === 'review-history') state.ui.modal = 'history';
     else if (action === 'ask') askHome();
     else if (action === 'ask-rag') { state.homeDraft = '什么是 RAG？'; state.ui.focusHomeConversation = true; askHome(); }

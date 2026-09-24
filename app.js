@@ -516,9 +516,9 @@
     const codeSnippet = extra.codeSnippet || 'function routeAgent(message) {\n  if (isAmbiguous(message)) return "clarify";\n  return "answer_and_next_step";\n}';
     const meta = codeMeta(codeSnippet);
     const summaryGuide = {
-      input: ['当前收到的信息', meta.input, '用户提出的问题'],
-      condition: ['是否满足关键条件', `是否符合“${meta.condition}”`, '信息是否足够继续处理'],
-      outcome: ['决定下一步怎么处理', meta.output, '给出对应结果']
+      input: [meta.hasApi ? '用户发来的请求内容' : '用户提供的信息', '当前需要处理的内容', '用户提出的问题'],
+      condition: ['信息是否足够清楚', '是否满足继续处理的条件', '是否需要先补充信息'],
+      outcome: ['直接继续处理，还是先请用户补充', '下一步采用哪种处理方式', '给出与当前情况匹配的回应']
     };
     state.codeSession = { id: uid('code-session'), source, title: extra.title || (source === '首页代码对话' ? `${meta.name} · 代码理解` : title), codeSnippet, trainingMeta: meta, summaryGuide, askedPoints: extra.askedPoints || ['输入', '判断条件', '结果'], trainingDirection: direction, unit: extra.unit || '代码逻辑理解', lesson: extra.lesson || title, goals: ['看懂接收的信息与结果', '看懂条件如何影响下一步', '能用自己的话讲清逻辑'], steps: ['拆输入输出', '代码填空', '代码排序', '最小仿写', '一句话讲明白'], progress: 0, status: 'in-progress', createdAt: now(), updatedAt: now() };
     state.trainingProgress = { sessionId: state.codeSession.id, step: 0, answers: [], attempts: [], order: [2, 0, 1], imitate: '', summarySlots: {}, understandingSummary: '' };
@@ -527,7 +527,8 @@
     if (!state.codeSession || !state.trainingProgress) { move('code', { history: false }); return code(); }
     const p = state.trainingProgress; const steps = state.codeSession.steps; const complete = p.step >= 5;
     const activity = complete ? trainingSummary() : trainingActivity(p.step);
-      return page(`<section><p class="eyebrow">代码训练 · ${esc(state.codeSession.title)}</p><h1 class="hero-title">${complete ? '这一轮训练完成了。' : '把“好像懂了”推进成讲得明白。'}</h1><div class="training-header glass-card"><div class="progress-top"><b>任务进度</b><span>${Math.min(p.step + 1, 5)} / 5</span></div><div class="bar"><i style="width:${p.step * 20}%"></i></div><div class="step-list">${steps.map((step, index) => `<div class="step ${index < p.step ? 'complete' : index === p.step ? 'current' : ''}"><span class="step-state">${index < p.step ? '✓' : index + 1}</span><span><b>${step}</b><small>${['确定输入与输出', '补全关键条件', '理解执行顺序', '迁移到最小场景', '形成理解摘要'][index]}</small></span><em>${index < p.step ? '已完成' : index === p.step ? '进行中' : '待开始'}</em></div>`).join('')}</div></div>${activity}</section>`, { useNav: false, useBack: true });
+    const compactProgress = p.step >= 4 ? `<div class="training-compact glass-card"><span><b>第 5 步 · 一句话讲明白</b><small>前四步已完成，现在把理解收成一句话。</small></span><div class="compact-dots">${steps.map((_, index) => `<i class="${index < p.step ? 'done' : index === p.step ? 'current' : ''}">${index < p.step ? '✓' : index + 1}</i>`).join('')}</div></div>` : `<div class="training-header glass-card"><div class="progress-top"><b>任务进度</b><span>${Math.min(p.step + 1, 5)} / 5</span></div><div class="bar"><i style="width:${p.step * 20}%"></i></div><div class="step-list">${steps.map((step, index) => `<div class="step ${index < p.step ? 'complete' : index === p.step ? 'current' : ''}"><span class="step-state">${index < p.step ? '✓' : index + 1}</span><span><b>${step}</b><small>${['确定输入与输出', '补全关键条件', '理解执行顺序', '迁移到最小场景', '形成理解摘要'][index]}</small></span><em>${index < p.step ? '已完成' : index === p.step ? '进行中' : '待开始'}</em></div>`).join('')}</div></div>`;
+    return page(`<section><p class="eyebrow">代码训练 · ${esc(state.codeSession.title)}</p><h1 class="hero-title">${complete ? '这一轮训练完成了。' : p.step >= 4 ? '最后一步，把理解说清楚。' : '把“好像懂了”推进成讲得明白。'}</h1>${compactProgress}${activity}</section>`, { useNav: false, useBack: true });
   }
   function trainingActivity(step) {
     const p = state.trainingProgress; const meta = state.codeSession.trainingMeta || codeMeta(state.codeSession.codeSnippet);
@@ -540,11 +541,11 @@
     if (step === 3) return `<div class="exercise glass-card"><span class="card-kicker">步骤 4 · 最小仿写</span><h3>围绕“${esc(meta.condition)}”写一个最小分支。</h3><textarea class="code-input" data-field="imitate" placeholder="例如：if (${esc(meta.condition)}) return '分支结果';">${esc(p.imitate)}</textarea><p>检查是否包含条件判断和返回结果；不运行真实代码。</p>${button('检查最小仿写', 'check-imitate')}</div>`;
     const guide = state.codeSession.summaryGuide || { input: ['当前收到的信息'], condition: ['是否满足关键条件'], outcome: ['决定下一步怎么处理'] };
     const slots = p.summarySlots || {};
-    const slot = (key, label) => `<label class="summary-slot"><span>${label}</span><div>${guide[key].map((option, index) => `<button class="choice ${slots[key] === index ? 'selected' : ''}" data-action="summary-select" data-slot="${key}" data-index="${index}">${esc(option)}</button>`).join('')}</div></label>`;
-    const sentence = slots.input !== undefined && slots.condition !== undefined && slots.outcome !== undefined ? `这段内容会先看${guide.input[slots.input]}，再根据${guide.condition[slots.condition]}，决定${guide.outcome[slots.outcome]}。` : '';
-    return `<div class="exercise glass-card"><span class="card-kicker">步骤 5 · 一句话讲明白</span><h3>现在不必逐行看代码。把这段逻辑讲成一句人话。</h3><p>先选择三个关键部分，再确认或改写成你的理解摘要。</p>${slot('input', '它先看什么信息？')}${slot('condition', '再根据什么情况判断？')}${slot('outcome', '最后决定什么结果？')}${sentence ? `<label class="summary-edit"><span>我的理解摘要</span><textarea data-field="understandingSummary">${esc(p.understandingSummary || sentence)}</textarea></label>` : ''}${sentence ? button('保存这句话并完成训练', 'submit-summary') : button('先选择三个部分', 'noop', { disabled: true })}</div>`;
+    const slot = (key, label) => `<label class="summary-slot"><span>${label}</span><select class="summary-select" data-summary-slot="${key}"><option value="">请选择</option>${guide[key].map((option, index) => `<option value="${index}" ${slots[key] === index ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select></label>`;
+    const sentence = slots.input !== undefined && slots.condition !== undefined && slots.outcome !== undefined ? `这段内容会先看${guide.input[slots.input]}，再判断${guide.condition[slots.condition]}，最后决定${guide.outcome[slots.outcome]}。` : '';
+    return `<div class="exercise glass-card"><span class="card-kicker">步骤 5 · 一句话讲明白</span><h3>把刚才的代码，翻译成你能复述的处理流程。</h3><p>你不需要运行或检查代码。只要说明：它收到信息后，怎样决定下一步。</p><div class="summary-purpose"><b>完成后你会得到什么？</b><span>一张可保存的“理解摘要卡”。以后回看时，不必重新逐行读代码。</span></div>${slot('input', '它先看什么信息？')}${slot('condition', '再判断什么情况？')}${slot('outcome', '最后会怎么处理？')}${sentence ? `<label class="summary-edit"><span>我的理解摘要卡</span><textarea data-field="understandingSummary">${esc(p.understandingSummary || sentence)}</textarea></label>` : ''}${sentence ? button('保存理解摘要并完成训练', 'submit-summary') : button('先选择三个部分', 'noop', { disabled: true })}</div>`;
   }
-  function trainingSummary() { return `<div class="result-card"><span class="answer-label">训练完成</span><h2 class="answer-title">你已经能把这段逻辑讲清楚。</h2><div class="record-detail"><b>我的理解摘要</b><p>${esc(state.trainingProgress.understandingSummary || '已完成理解摘要。')}</p><b>本节掌握点</b><p>知道它看什么信息、按什么判断、会带来什么结果。</p></div><p class="answer-copy">下一步：保存这次理解，之后回看时不必从头读代码。</p>${button('保存为代码理解记录', 'save-code-record')}</div>`; }
+  function trainingSummary() { return `<div class="result-card"><span class="answer-label">训练完成</span><h2 class="answer-title">你已经能把这段处理流程讲清楚。</h2><div class="record-detail"><b>理解摘要卡</b><p>${esc(state.trainingProgress.understandingSummary || '已完成理解摘要。')}</p><b>本节掌握点</b><p>知道它看什么信息、按什么判断、会带来什么结果。</p></div><p class="answer-copy">下一步：保存这张理解摘要卡，之后回看时不必从头读代码。</p>${button('保存为代码理解记录', 'save-code-record')}</div>`; }
   function codeRecordDetail() {
     const item = state.viewingCodeRecord;
     if (!item) { move('code', { history: false }); return code(); }
@@ -659,7 +660,7 @@
     const flow = state.claimFlow || { mode: 'experience', step: 0, answers: [] };
     const [label, question, hint] = claimQuestions[flow.step];
     const history = flow.answers.map((value, index) => `<article class="evidence-answer"><span>${index + 1}</span><div><b>${claimQuestions[index][0]}</b><small>${esc(value)}</small></div>${icon('✓')}</article>`).join('');
-    return page(`<section class="evidence-workbench"><p class="eyebrow">作品集 · 整理经历陈述与材料</p><h1 class="hero-title">先整理你怎么说、<br>有哪些材料，再决定怎么写。</h1><div class="evidence-guard"><span class="round-icon amber">${icon('◇')}</span><div><b>AI 表达边界助手</b><small>我不会判断材料是否真实；我会帮你整理角色范围、材料说明和表达风险。</small></div></div><div class="evidence-progress">${claimQuestions.map(([name], index) => `<span class="${index < flow.step ? 'done' : index === flow.step ? 'current' : ''}"><i>${index < flow.step ? '✓' : index + 1}</i><b>${name}</b></span>`).join('')}</div>${history ? `<section class="evidence-history"><div class="section-head"><h2 class="section-title">已整理内容</h2><span>${flow.answers.length} 条</span></div>${history}</section>` : ''}<article class="evidence-question glass-card"><span class="card-kicker">正在整理 · ${label}</span><h3>${esc(question)}</h3><p>${esc(hint)}</p><label class="evidence-input"><span>你的陈述或材料说明</span><textarea data-field="claimDraft" placeholder="写下你愿意自行核对的内容；没有可补充材料时可以写“暂无”"></textarea></label>${button('保存这一项', 'claim-submit')}</article></section>`, { useNav: false, useBack: true });
+    return page(`<section class="evidence-workbench"><p class="eyebrow">作品集 · 整理经历陈述与材料</p><h1 class="hero-title">先整理你怎么说、<br>有哪些材料，再决定怎么写。</h1><div class="evidence-guard"><span class="round-icon amber">${icon('◇')}</span><div><b>AI 表达边界助手</b><small>我不会判断材料是否真实；我会帮你整理角色范围、材料说明和表达风险。</small></div></div><div class="evidence-progress">${claimQuestions.map(([name], index) => `<span class="${index < flow.step ? 'done' : index === flow.step ? 'current' : ''}"><i>${index < flow.step ? '✓' : index + 1}</i><b>${name}</b></span>`).join('')}</div>${flow.warning ? `<div class="expression-warning"><b>请先回到具体内容。</b><span>我可以帮你让表达更清楚，但不会根据“写厉害点”补造职责、数据或结果。请写下你实际做了什么。</span></div>` : ''}${history ? `<section class="evidence-history"><div class="section-head"><h2 class="section-title">已整理内容</h2><span>${flow.answers.length} 条</span></div>${history}</section>` : ''}<article class="evidence-question glass-card"><span class="card-kicker">正在整理 · ${label}</span><h3>${esc(question)}</h3><p>${esc(hint)}</p><label class="evidence-input"><span>你的陈述或材料说明</span><textarea data-field="claimDraft" placeholder="写下你愿意自行核对的内容；没有可补充材料时可以写“暂无”"></textarea></label>${button('保存这一项', 'claim-submit')}</article></section>`, { useNav: false, useBack: true });
   }
   function makeClaimsFromFlow() {
     const flow = state.claimFlow; const a = flow.answers;
@@ -809,7 +810,7 @@
     else if (action === 'start-practice') { state.practice = { step: 0, answers: [], responses: [], draft: '', feedback: null, target: targetPlan().id }; move('practice'); }
     else if (action === 'start-composite') move('practice-hub');
     else if (action === 'start-claim-workbench') startClaimWorkbench(node.dataset.mode);
-    else if (action === 'claim-submit') { const text = input('claimDraft'); const flow = state.claimFlow; if (!text) flash('先写下你的陈述或材料说明。'); else { flow.answers.push(text); flow.step += 1; if (flow.step < claimQuestions.length) flash('这一项已保存，继续下一项。'); else { makeClaimsFromFlow(); move('portfolio-claim-review'); flash('已整理为候选表达主张，请逐条核对。'); } } }
+    else if (action === 'claim-submit') { const text = input('claimDraft'); const flow = state.claimFlow; if (!text) flash('先写下你的陈述或材料说明。'); else if (/写厉害点|包装一下|写高级一点|写得像主导|编好看点/.test(text)) { flow.warning = true; flash('请改写为实际职责、产物、结果或材料说明。'); } else { flow.warning = false; flow.answers.push(text); flow.step += 1; if (flow.step < claimQuestions.length) flash('这一项已保存，继续下一项。'); else { makeClaimsFromFlow(); move('portfolio-claim-review'); flash('已整理为候选表达主张，请逐条核对。'); } } }
     else if (action === 'open-claim-review') move('portfolio-claim-review');
     else if (action === 'claim-approve') { const item = state.portfolioClaims[Number(node.dataset.index)]; if (item.expressionRisk === 'high') flash('这条表述风险过高，请先降低表达强度或补充说明。'); else { item.approved = true; flash('已确认用于候选表达。'); } }
     else if (action === 'claim-edit') { state.ui.claimIndex = Number(node.dataset.index); state.ui.modal = 'claim-edit'; }
@@ -886,6 +887,13 @@
   function appendExperience(role, text) { state.experienceFlow.messages.push({ role, text, actions: [] }); }
 
   document.addEventListener('click', eventHandler);
+  document.addEventListener('change', event => {
+    const select = event.target.closest('[data-summary-slot]');
+    if (!select || !state.trainingProgress) return;
+    if (select.value === '') delete state.trainingProgress.summarySlots[select.dataset.summarySlot];
+    else state.trainingProgress.summarySlots[select.dataset.summarySlot] = Number(select.value);
+    persist(); render();
+  });
   document.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && event.target.matches('[data-field="homeDraft"]')) { event.preventDefault(); event.target.closest('.ask-box')?.querySelector('[data-action="ask"]')?.click(); }
   });

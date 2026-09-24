@@ -8,8 +8,8 @@
     session: 'aiCareer.session.v04', profile: 'user_goal_profile', topic: 'conversation_topic',
     codeContext: 'currentCodeContext', codeSession: 'codeSession', trainingProgress: 'trainingProgress',
     codeRecords: 'codeRecords', learningRecords: 'learningRecords', practiceRecords: 'practiceRecords',
-    workRecords: 'workRecords', trainingCases: 'trainingCases', portfolioDrafts: 'portfolioDrafts', confirmedFacts: 'confirmedFacts',
-    pendingFacts: 'pendingFacts', rejectedFacts: 'rejectedFacts', historyItems: 'historyItems', onboarding: 'aiCareer.onboarding.v04'
+    workRecords: 'workRecords', trainingCases: 'trainingCases', portfolioDrafts: 'portfolioDrafts', portfolioClaims: 'portfolioClaims',
+    materialReferences: 'materialReferences', historyItems: 'historyItems', onboarding: 'aiCareer.onboarding.v04'
   };
 
   const BASE = {
@@ -18,7 +18,7 @@
     userGoalProfile: { target: '', level: '', availableTime: '' }, currentCodeContext: null,
     codeSession: null, trainingProgress: null, quiz: { index: 0, answers: [] }, practice: { step: 0, answers: [] },
     learningRecords: [], practiceRecords: [], workRecords: [], trainingCases: [], codeRecords: [], portfolioDrafts: [],
-    factCandidates: [], confirmedFacts: [], pendingFacts: [], rejectedFacts: [], experienceFlow: null,
+    portfolioClaims: [], materialReferences: [], experienceFlow: null,
     historyItems: [], onboardingComplete: false, goalChoice: '', assetView: null, assetRecord: null, draftEditor: null, viewingDraft: null, ui: { modal: null, toast: null, loading: null, pendingDelete: null, undo: null, chatScrolls: {}, chatFollow: {} }
   };
 
@@ -45,12 +45,25 @@
     state.trainingCases = read(KEYS.trainingCases, state.trainingCases);
     state.codeRecords = read(KEYS.codeRecords, state.codeRecords);
     state.portfolioDrafts = read(KEYS.portfolioDrafts, state.portfolioDrafts);
-    state.confirmedFacts = read(KEYS.confirmedFacts, state.confirmedFacts);
-    state.pendingFacts = read(KEYS.pendingFacts, state.pendingFacts);
-    state.rejectedFacts = read(KEYS.rejectedFacts, state.rejectedFacts);
+    state.portfolioClaims = read(KEYS.portfolioClaims, state.portfolioClaims);
+    state.materialReferences = read(KEYS.materialReferences, state.materialReferences);
     state.historyItems = read(KEYS.historyItems, state.historyItems);
     state.onboardingComplete = read(KEYS.onboarding, state.onboardingComplete);
-    state.factCandidates = [...state.confirmedFacts, ...state.pendingFacts, ...state.rejectedFacts].sort((a, b) => (a.order || 0) - (b.order || 0));
+    // Migrate prior local records once. They remain user data, but the current UI only uses claims.
+    if (!state.portfolioClaims.length) {
+      const oldClaims = [...read('confirmedFacts', []), ...read('pendingFacts', []), ...read('rejectedFacts', [])];
+      state.portfolioClaims = oldClaims.map(item => ({
+        id: item.id || uid('claim'), sourceType: /训练/.test(item.type || '') ? 'training_case' : 'user_statement',
+        statement: item.detail || item.title || '', title: item.title || '经历陈述', roleScope: item.strength || '参与',
+        materialStatus: item.evidence === '已证明' ? 'linked' : item.evidence === '无证明' ? 'none' : 'insufficient',
+        expressionRisk: item.status === 'rejected' ? 'high' : item.status === 'confirmed' ? 'low' : 'medium',
+        recommendedWording: item.title || '', approved: item.status === 'confirmed', createdAt: now(), order: item.order || 0
+      }));
+    }
+    state.confirmedFacts = state.portfolioClaims.filter(item => item.approved);
+    state.pendingFacts = state.portfolioClaims.filter(item => !item.approved && item.expressionRisk !== 'high');
+    state.rejectedFacts = state.portfolioClaims.filter(item => item.expressionRisk === 'high');
+    state.factCandidates = state.portfolioClaims;
     state.conversation = Array.isArray(state.conversation) && state.conversation.length ? state.conversation : BASE.conversation;
     if (state.conversation[0]?.role === 'ai' && /你好，我可以先帮你把一个问题讲明白/.test(state.conversation[0].text)) {
       state.conversation[0] = { ...BASE.conversation[0] };
@@ -64,7 +77,7 @@
     state.trainingCases = Array.isArray(state.trainingCases) ? state.trainingCases : [];
     state.codeRecords = Array.isArray(state.codeRecords) ? state.codeRecords : [];
     state.portfolioDrafts = Array.isArray(state.portfolioDrafts) ? state.portfolioDrafts : [];
-    if (['portfolio-incubate', 'portfolio-recommendations', 'portfolio-project'].includes(state.route)) {
+    if (['portfolio-incubate', 'portfolio-recommendations', 'portfolio-project', 'portfolio-experience', 'portfolio-facts', 'portfolio-overclaim', 'portfolio-drafts'].includes(state.route)) {
       state.route = 'practice';
       state.practice = { mode: 'composite', caseId: 'knowledge', step: 0, responses: [], draft: '', feedback: null };
     }
@@ -75,19 +88,19 @@
     if (state.codeSession) {
       state.codeSession = {
         askedPoints: ['输入', '输出', '条件分支'], goals: ['看懂输入与输出', '看懂条件如何影响下一步', '看懂为什么需要默认分支'],
-        steps: ['拆输入输出', '代码填空', '代码排序', '最小仿写', '检查这段能不能用'], trainingDirection: '基础训练库',
+        steps: ['拆输入输出', '代码填空', '代码排序', '最小仿写', '一句话讲明白'], trainingDirection: '基础训练库',
         unit: '基础代码理解', lesson: '从输入到输出', progress: 0, status: 'in-progress', ...state.codeSession
       };
       state.codeSession.askedPoints = Array.isArray(state.codeSession.askedPoints) ? state.codeSession.askedPoints : ['输入', '输出', '条件分支'];
       state.codeSession.goals = Array.isArray(state.codeSession.goals) ? state.codeSession.goals : ['看懂输入与输出', '看懂条件如何影响下一步', '看懂为什么需要默认分支'];
-      state.codeSession.steps = Array.isArray(state.codeSession.steps) ? state.codeSession.steps : ['拆输入输出', '代码填空', '代码排序', '最小仿写', '检查这段能不能用'];
+      state.codeSession.steps = ['拆输入输出', '代码填空', '代码排序', '最小仿写', '一句话讲明白'];
     }
     if (state.trainingProgress) {
-      state.trainingProgress = { step: 0, answers: [], attempts: [], order: [2, 0, 1], imitate: '', checks: [], ...state.trainingProgress };
+      state.trainingProgress = { step: 0, answers: [], attempts: [], order: [2, 0, 1], imitate: '', summarySlots: {}, understandingSummary: '', ...state.trainingProgress };
       state.trainingProgress.answers = Array.isArray(state.trainingProgress.answers) ? state.trainingProgress.answers : [];
       state.trainingProgress.attempts = Array.isArray(state.trainingProgress.attempts) ? state.trainingProgress.attempts : [];
       state.trainingProgress.order = Array.isArray(state.trainingProgress.order) ? state.trainingProgress.order : [2, 0, 1];
-      state.trainingProgress.checks = Array.isArray(state.trainingProgress.checks) ? state.trainingProgress.checks : [];
+      state.trainingProgress.summarySlots = state.trainingProgress.summarySlots || {};
     }
     if (!state.onboardingComplete && state.route === 'home') state.route = 'goal-setup';
     return state;
@@ -95,28 +108,29 @@
 
   let state = hydrate();
 
+  function approvedClaims() { return state.portfolioClaims.filter(item => item.approved); }
+  // Keeps pre-refactor local records readable without exposing the retired fact-verification flow.
   function syncFacts() {
-    state.confirmedFacts = state.factCandidates.filter(item => item.status === 'confirmed');
-    state.pendingFacts = state.factCandidates.filter(item => item.status === 'pending');
-    state.rejectedFacts = state.factCandidates.filter(item => item.status === 'rejected');
+    state.confirmedFacts = approvedClaims();
+    state.pendingFacts = state.portfolioClaims.filter(item => !item.approved && item.expressionRisk !== 'high');
+    state.rejectedFacts = state.portfolioClaims.filter(item => item.expressionRisk === 'high');
+    state.factCandidates = state.portfolioClaims;
   }
 
   function persist() {
-    syncFacts();
     if (state.codeSession && state.trainingProgress) state.codeSession.progress = state.trainingProgress.step || 0;
     try {
       save(KEYS.session, {
         route: state.route, routeHistory: state.routeHistory, codeTab: state.codeTab, homeDraft: state.homeDraft,
         conversation: state.conversation, quiz: state.quiz, practice: state.practice, experienceFlow: state.experienceFlow,
-        factCandidates: state.factCandidates, onboardingComplete: state.onboardingComplete, goalChoice: state.goalChoice, assetView: state.assetView, assetRecord: state.assetRecord, draftEditor: state.draftEditor, viewingDraft: state.viewingDraft
+        portfolioClaims: state.portfolioClaims, materialReferences: state.materialReferences, onboardingComplete: state.onboardingComplete, goalChoice: state.goalChoice, assetView: state.assetView, assetRecord: state.assetRecord, draftEditor: state.draftEditor, viewingDraft: state.viewingDraft
       });
       save(KEYS.profile, state.userGoalProfile); save(KEYS.topic, state.conversationTopic);
       save(KEYS.codeContext, state.currentCodeContext); save(KEYS.codeSession, state.codeSession);
       save(KEYS.trainingProgress, state.trainingProgress); save(KEYS.learningRecords, state.learningRecords);
       save(KEYS.practiceRecords, state.practiceRecords); save(KEYS.workRecords, state.workRecords); save(KEYS.trainingCases, state.trainingCases);
       save(KEYS.codeRecords, state.codeRecords); save(KEYS.portfolioDrafts, state.portfolioDrafts);
-      save(KEYS.confirmedFacts, state.confirmedFacts); save(KEYS.pendingFacts, state.pendingFacts);
-      save(KEYS.rejectedFacts, state.rejectedFacts); save(KEYS.historyItems, state.historyItems);
+      save(KEYS.portfolioClaims, state.portfolioClaims); save(KEYS.materialReferences, state.materialReferences); save(KEYS.historyItems, state.historyItems);
       save(KEYS.onboarding, state.onboardingComplete);
     } catch (_) {
       state.ui.modal = 'save-error';
@@ -171,8 +185,8 @@
     return `<header class="topbar">${backButton ? `<button class="back" data-action="back" aria-label="返回">${icon('‹')}</button><span class="brand">AI Career</span>` : `<div class="brand"><span class="brand-mark">${icon('A')}</span>AI Career</div>`}<button class="icon-button" data-action="notice" aria-label="消息提醒">${icon('◌')}</button></header>`;
   }
   function nav() {
-    const items = [['home', '首页', '⌂'], ['code', '代码', '⌘'], ['portfolio', '作品集', '▣'], ['me', '我的', '●']];
-    const active = ['home', 'quiz', 'practice', 'practice-hub', 'goal-setup'].includes(state.route) ? 'home' : state.route.startsWith('code') ? 'code' : state.route.startsWith('portfolio') ? 'portfolio' : 'me';
+    const items = [['home', '首页', '⌂'], ['code', '代码', '⌘'], ['practice', '实操', '✦'], ['portfolio', '作品集', '▣'], ['me', '我的', '●']];
+    const active = ['home', 'quiz', 'goal-setup'].includes(state.route) ? 'home' : state.route.startsWith('code') ? 'code' : ['practice', 'practice-hub'].includes(state.route) ? 'practice' : state.route.startsWith('portfolio') ? 'portfolio' : 'me';
     return `<nav class="nav">${items.map(([key, label, glyph]) => `<button class="${key === active ? 'active' : ''}" data-action="nav" data-route="${key}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav>`;
   }
   function page(content, options = {}) {
@@ -222,8 +236,8 @@
     },
     portfolio: {
       id: 'portfolio', practiceTitle: '可信表达判断实操', practiceKicker: 'AI 实操 · 表达边界',
-      practiceTasks: [['生成作品集表达前，哪些内容可以进入草稿？', ['已确认且有证据支撑的事实', '任何听起来更厉害的描述'], 0], ['“我参与了项目”暂时不建议写成什么？', ['主导整个项目', '参与某个明确环节'], 0], ['草稿保存时，最需要保留什么？', ['引用的事实来源与版本内容', '只保留润色后的文字'], 0]],
-      codeOrder: [3, 2, 0, 1], portfolioHint: '先把经历说清楚，逐条确认可写内容后再生成草稿。'
+      practiceTasks: [['生成候选表达前，什么需要先被用户核对？', ['自己的陈述、角色范围与材料说明', '任何听起来更厉害的描述'], 0], ['“我参与了项目”暂时不建议写成什么？', ['主导整个项目', '参与某个明确环节'], 0], ['草稿保存时，最需要保留什么？', ['引用的主张来源与版本内容', '只保留润色后的文字'], 0]],
+      codeOrder: [3, 2, 0, 1], portfolioHint: '先整理经历陈述与材料说明，核对候选表达主张后再生成草稿。'
     },
     explore: {
       id: 'explore', practiceTitle: 'AI 概念判断实操', practiceKicker: 'AI 实操 · 概念理解',
@@ -235,7 +249,7 @@
   function goalSetup() {
     const selected = state.goalChoice || state.userGoalProfile.target || '';
     const plan = selected ? targetPlan(selected) : null;
-    const preview = plan ? (selected === 'pm' ? 'AI 实操、项目化综合练习、训练案例表达' : selected === 'code' ? '代码训练、理解记录、相关实操任务' : selected === 'portfolio' ? '经历整理、训练案例标签、可信草稿' : selected === 'content' ? '内容场景实操、表达边界、训练案例' : selected === 'concept' ? '概念答疑、小测、学习记录' : '从一个明确问题开始，再决定下一步') : '选择一个当前最想解决的问题即可，之后随时可以调整。';
+    const preview = plan ? (selected === 'pm' ? 'AI 实操、项目化综合练习、训练案例表达' : selected === 'code' ? '代码训练、理解记录、相关实操任务' : selected === 'portfolio' ? '经历整理、训练案例标签、候选表达草稿' : selected === 'content' ? '内容场景实操、表达边界、训练案例' : selected === 'concept' ? '概念答疑、小测、学习记录' : '从一个明确问题开始，再决定下一步') : '选择一个当前最想解决的问题即可，之后随时可以调整。';
     return `<div class="goal-shell"><header class="goal-top"><div class="brand"><span class="brand-mark">${icon('A')}</span>AI Career</div><button data-action="skip-goal">跳过</button></header><section class="goal-intro"><span>首次进入</span><h1>请选择你的目标</h1><p>我会根据你的目标，调整回答方式、练习内容、AI 实操主题推荐和作品集表达。</p></section><div class="goal-cloud">${goalOptions.map(([value, label, glyph]) => `<button class="goal-bubble ${selected === value ? 'selected' : ''}" data-action="choose-goal" data-value="${value}"><i>${selected === value ? '✓' : glyph}</i><b>${label}</b></button>`).join('')}</div><div class="goal-preview ${selected ? 'ready' : ''}"><span>${icon(selected ? '✓' : '◎')}</span><div><b>${selected ? `已选择：${goalLabel(selected)}` : '选择后会发生什么？'}</b><small>将优先推荐：${preview}</small></div></div><div class="goal-footer">${button('确认并进入首页', 'confirm-goal', { disabled: !selected })}</div></div>`;
   }
   function home() {
@@ -243,10 +257,10 @@
     const goal = state.userGoalProfile.target || 'explore';
     const cards = [
       ['concept', '概念答疑', '先把一个问题讲明白', '◎', 'ask-rag'], ['pm', 'AI 实操', '完成一次可检查的产品任务', '◆', 'start-composite'],
-      ['code', '代码理解', '进入训练库，练会一段代码', '⌘', 'open-code'], ['portfolio', '作品集表达', '先确认真实内容再表达', '▣', 'start-experience']
+      ['code', '代码理解', '进入训练库，练会一段代码', '⌘', 'open-code'], ['portfolio', '作品集表达', '整理陈述与材料，再生成候选表达', '▣', 'start-claim-workbench']
     ].sort((a, b) => (a[0] === goal ? -1 : b[0] === goal ? 1 : 0));
     const latestCase = state.trainingCases[0];
-    const recommended = state.codeSession ? ['继续上次代码训练', `${state.codeSession.title} · 已完成 ${state.trainingProgress?.step || 0}/5 步`, 'continue-code', '代码训练'] : latestCase ? ['回看最近训练案例', `${latestCase.title} · 已保存检查与复盘`, 'open-training-cases', '训练案例'] : [goal === 'pm' ? '开始一次项目化综合练习' : goal === 'portfolio' ? '确认一条可写事实' : goal === 'code' ? '开始一段代码理解' : '从一个明确问题开始', goal === 'pm' ? '完成需求判断、状态设计与测试复盘' : goal === 'portfolio' ? '确认事实后，再生成可信表达' : goal === 'code' ? '粘贴一段看不懂的代码，我会先解释整体作用' : '问一个概念问题，再决定下一步', goal === 'pm' ? 'start-composite' : goal === 'portfolio' ? 'portfolio-facts' : goal === 'code' ? 'go-home-code' : 'ask-rag', '今日推进'];
+    const recommended = state.codeSession ? ['继续上次代码训练', `${state.codeSession.title} · 已完成 ${state.trainingProgress?.step || 0}/5 步`, 'continue-code', '代码训练'] : latestCase ? ['回看最近训练案例', `${latestCase.title} · 已保存检查与复盘`, 'open-training-cases', '训练案例'] : [goal === 'pm' ? '开始一次项目化综合练习' : goal === 'portfolio' ? '整理一段经历陈述' : goal === 'code' ? '开始一段代码理解' : '从一个明确问题开始', goal === 'pm' ? '完成需求判断、状态设计与测试复盘' : goal === 'portfolio' ? '整理角色范围和材料说明，再生成候选表达' : goal === 'code' ? '粘贴一段看不懂的代码，我会先解释整体作用' : '问一个概念问题，再决定下一步', goal === 'pm' ? 'start-composite' : goal === 'portfolio' ? 'start-claim-workbench' : goal === 'code' ? 'go-home-code' : 'ask-rag', '今日推进'];
     const assetTotal = state.learningRecords.length + state.codeRecords.length + state.workRecords.length + state.trainingCases.length + state.portfolioDrafts.length;
     return page(`<section class="home-page"><div class="home-greeting"><div><p class="eyebrow">当前目标</p><h1>你好，${esc(goalLabel(goal))}</h1></div><button class="goal-switch" data-action="open-goal-setup">调整${icon('›')}</button></div><article class="today-card"><div class="today-card-head"><span>${icon('✦')} ${recommended[3]}</span><small>${assetTotal} 条能力资产</small></div><h2>${recommended[0]}</h2><p>${esc(recommended[1])}</p><footer><span class="today-progress"><i></i>现在就做一小步</span>${button('继续', recommended[2], { className: 'today-action' })}</footer></article><div class="section-head home-section-head"><h2 class="section-title">你可以从这里开始</h2><button class="text-action" data-action="review-history">回顾对话</button></div><div class="home-feature-grid">${cards.map(([type, title, note, glyph, action]) => `<button class="home-feature ${type}" data-action="${action}"><span>${icon(glyph)}</span><b>${title}</b><small>${note}</small>${icon('›')}</button>`).join('')}</div><div class="home-summary-grid"><button class="summary-entry" data-action="review-history">${icon('↺')}<span><b>回顾上次对话</b><small>${last ? esc(last.title) : '还没有已保存的对话'}</small></span>${icon('›')}</button><button class="summary-entry" data-action="nav" data-route="me">${icon('▣')}<span><b>能力资产中心</b><small>${assetTotal ? `已沉淀 ${assetTotal} 条，可继续回看与使用` : '完成学习、训练或 AI 实操后会沉淀在这里'}</small></span>${icon('›')}</button></div>
   <section class="conversation-panel home-conversation"><div class="conversation-head"><div><b>AI 学习助手</b><small>理解问题，判断下一步</small></div><span class="role-badge">开放问答</span></div><p class="assistant-intro">你可以直接问 AI 概念、贴代码、说项目经历；我先回答当前问题，再推荐下一步。</p><div class="home-prompt-row"><button data-action="ask-rag">什么是 RAG？</button><button data-action="go-home-code">看懂一段代码</button><button data-action="start-composite">做一次 AI PM 练习</button></div><div class="conversation-list" data-chat-key="home">${state.conversation.map(message).join('')}</div><label class="ask-box">${icon('⌕')}<input data-field="homeDraft" value="${esc(state.homeDraft)}" placeholder="向 AI 学习助手提问..."><button class="send" data-action="ask" aria-label="发送">${icon('↗')}</button></label></section>
@@ -278,9 +292,9 @@
       'llm-rag': { text: 'LLM 更像负责理解和生成的“大脑”；RAG 则是在回答前先从指定资料里找依据，再交给模型组织答案。一个提供生成能力，一个让回答基于资料。', actions: learningActions() },
       agent: { text: 'Agent 不是单纯多轮聊天，而是能根据目标、当前状态和规则决定下一步动作的协作流程。它可以回答、追问、调用工具或转入固定任务，但每一步都应有边界。', actions: [{ label: '看一个路由例子', action: 'go-home-code' }, { label: '继续问 Agent', action: 'ask-rag-followup' }] },
       prompt: { text: 'Prompt 是你给 AI 的任务说明。一个更有效的 Prompt 通常会写清目标、已有材料、输出格式和限制条件；它不是“越长越好”，而是让任务边界更明确。', actions: [{ label: '做一次任务实操', action: 'start-practice' }, { label: '保存学习记录', action: 'save-learning' }] },
-      pm: { text: 'AI 产品工作不是只写 PRD。你需要先判断问题是否明确，再决定哪里由 AI 协助、哪里必须由规则和用户确认。可以先完成一次有任务背景、检查标准和复盘的练习，再沉淀为个人训练案例。', actions: [{ label: '做一次 AI PM 练习', action: 'start-composite' }, { label: '看看可写事实', action: 'start-experience' }] },
-      content: { text: '做 AI 内容或运营时，先确认受众、内容目标、事实来源和审核边界。AI 可以协助拆任务和检查表达，但未经验证的数据、效果和职责不能直接写进结论。', actions: [{ label: '做一次内容实操', action: 'start-practice' }, { label: '整理真实经历', action: 'start-experience' }] },
-      experience: { text: '我可以先帮你把经历说清楚，但不会直接把“参与”改写成“主导”。接下来会逐步澄清你的职责、交付物、数据、协作边界和证明材料，再由你确认哪些能写。', actions: [{ label: '把经历说清楚', action: 'start-experience' }, { label: '查看作品集', action: 'nav', data: { route: 'portfolio' } }] },
+      pm: { text: 'AI 产品工作不是只写 PRD。你需要先判断问题是否明确，再决定哪里由 AI 协助、哪里必须由规则和用户确认。可以先完成一次有任务背景、检查标准和复盘的练习，再沉淀为个人训练案例。', actions: [{ label: '做一次 AI PM 练习', action: 'start-composite' }, { label: '整理经历表达', action: 'start-claim-workbench', data: { mode: 'experience' } }] },
+      content: { text: '做 AI 内容或运营时，先确认受众、内容目标、材料来源说明和审核边界。AI 可以协助拆任务和检查表达，但不替用户认证数据、效果或职责。', actions: [{ label: '做一次内容实操', action: 'start-practice' }, { label: '整理经历表达', action: 'start-claim-workbench', data: { mode: 'experience' } }] },
+      experience: { text: '我可以帮你整理经历陈述和材料说明，但不会把“参与”自动改写成“主导”，也不会认证材料真实性。接下来会收集职责、交付物、结果、协作范围和材料说明，再由你决定哪些候选表达可以使用。', actions: [{ label: '整理我的经历', action: 'start-claim-workbench', data: { mode: 'experience' } }, { label: '查看作品集', action: 'nav', data: { route: 'portfolio' } }] },
       'no-project': { text: '没有真实项目经历时，先不要生成一段看起来完整的作品集表达。你可以完成一次项目化综合练习，留下自己的提交、检查反馈和复盘；它会被明确标注为个人训练案例，而不是工作项目。', actions: [{ label: '开始项目化综合练习', action: 'start-composite' }, { label: '先看一个概念', action: 'ask-rag' }] },
       general: { text: '我可以先帮你把当前问题拆清楚。你可以直接问一个 AI 概念、贴一段看不懂的代码，或说说你想做的项目和已有经历；我会按不同任务给你不同的下一步。', actions: [{ label: '什么是 RAG？', action: 'ask-rag' }, { label: '看懂一段代码', action: 'go-home-code' }, { label: '说说项目经历', action: 'start-experience' }] }
     };
@@ -403,11 +417,11 @@
     fact: {
       title: '可信表达边界案例',
       subtitle: '个人训练案例 · AI PM 综合练习',
-      background: '候选人说自己“参与了 AI 项目”，同时希望把表达写得像主导。你需要设计一套先澄清事实、再决定表达边界的流程。',
-      deliverable: '事实分类、表达强度判断、确认门禁与边界测试场景。',
+      background: '用户写下“参与了 AI 项目”，同时希望把表达写得像主导。你需要设计一套整理陈述与材料说明、再判断表达风险的流程。',
+      deliverable: '陈述分类、表达强度判断、用户确认声明与边界测试场景。',
       steps: [
-        ['事实分类', '区分哪些是用户已说明的真实事实，哪些还需要补充证明。', ['事实', '证明', '待补充']],
-        ['门禁设计', '写清哪些内容可以进入草稿，哪些内容必须被拦截。', ['确认', '草稿', '拦截']],
+        ['陈述分类', '区分用户的陈述、材料说明与仍需本人核对的内容。', ['陈述', '材料', '核对']],
+        ['表达门槛', '写清哪些候选表达可以使用，哪些内容必须被拦截。', ['确认', '草稿', '拦截']],
         ['边界复盘', '写一个夸大表达场景，并说明系统如何提醒与兜底。', ['夸大', '提醒', '兜底']]
       ]
     }
@@ -427,7 +441,7 @@
       pm: '与你当前的 AI 产品目标匹配，先练问题判断、状态设计和测试复盘。',
       concept: '从概念理解延伸到一次具体的产品判断练习。',
       content: '优先练清楚 AI、规则与人工确认之间的边界。',
-      portfolio: '先练事实边界与确认门禁，再处理可信表达。',
+      portfolio: '先练表达边界与用户确认声明，再处理候选表达。',
       code: '先完成一次状态与兜底判断，再回到代码训练验证实现。',
       explore: '先从一个边界清楚、可在平台内完成的案例开始。'
     };
@@ -501,14 +515,19 @@
   function buildSession(title, source, direction = '看懂 AI 应用里的代码', extra = {}) {
     const codeSnippet = extra.codeSnippet || 'function routeAgent(message) {\n  if (isAmbiguous(message)) return "clarify";\n  return "answer_and_next_step";\n}';
     const meta = codeMeta(codeSnippet);
-    state.codeSession = { id: uid('code-session'), source, title: extra.title || (source === '首页代码对话' ? `${meta.name} · 代码理解` : title), codeSnippet, trainingMeta: meta, askedPoints: extra.askedPoints || ['state', 'next', '返回值'], trainingDirection: direction, unit: extra.unit || 'Agent 状态和路由', lesson: extra.lesson || title, goals: [`看懂 ${meta.name} 的输入与输出`, `看懂条件“${meta.condition}”如何影响结果`, `看懂默认返回 ${meta.fallback}`], steps: ['拆输入输出', '代码填空', '代码排序', '最小仿写', '检查这段能不能用'], progress: 0, status: 'in-progress', createdAt: now(), updatedAt: now() };
-    state.trainingProgress = { sessionId: state.codeSession.id, step: 0, answers: [], attempts: [], order: [2, 0, 1], imitate: '', checks: [] };
+    const summaryGuide = {
+      input: ['当前收到的信息', meta.input, '用户提出的问题'],
+      condition: ['是否满足关键条件', `是否符合“${meta.condition}”`, '信息是否足够继续处理'],
+      outcome: ['决定下一步怎么处理', meta.output, '给出对应结果']
+    };
+    state.codeSession = { id: uid('code-session'), source, title: extra.title || (source === '首页代码对话' ? `${meta.name} · 代码理解` : title), codeSnippet, trainingMeta: meta, summaryGuide, askedPoints: extra.askedPoints || ['输入', '判断条件', '结果'], trainingDirection: direction, unit: extra.unit || '代码逻辑理解', lesson: extra.lesson || title, goals: ['看懂接收的信息与结果', '看懂条件如何影响下一步', '能用自己的话讲清逻辑'], steps: ['拆输入输出', '代码填空', '代码排序', '最小仿写', '一句话讲明白'], progress: 0, status: 'in-progress', createdAt: now(), updatedAt: now() };
+    state.trainingProgress = { sessionId: state.codeSession.id, step: 0, answers: [], attempts: [], order: [2, 0, 1], imitate: '', summarySlots: {}, understandingSummary: '' };
   }
   function training() {
     if (!state.codeSession || !state.trainingProgress) { move('code', { history: false }); return code(); }
     const p = state.trainingProgress; const steps = state.codeSession.steps; const complete = p.step >= 5;
     const activity = complete ? trainingSummary() : trainingActivity(p.step);
-    return page(`<section><p class="eyebrow">代码训练 · ${esc(state.codeSession.title)}</p><h1 class="hero-title">${complete ? '这一轮训练完成了。' : '把“好像懂了”推进成会用。'}</h1><div class="training-header glass-card"><div class="progress-top"><b>任务进度</b><span>${Math.min(p.step + 1, 5)} / 5</span></div><div class="bar"><i style="width:${p.step * 20}%"></i></div><div class="step-list">${steps.map((step, index) => `<div class="step ${index < p.step ? 'complete' : index === p.step ? 'current' : ''}"><span class="step-state">${index < p.step ? '✓' : index + 1}</span><span><b>${step}</b><small>${['确定输入与输出', '补全关键条件', '理解执行顺序', '迁移到最小场景', '检查边界条件'][index]}</small></span><em>${index < p.step ? '已完成' : index === p.step ? '进行中' : '待开始'}</em></div>`).join('')}</div></div>${activity}</section>`, { useNav: false, useBack: true });
+      return page(`<section><p class="eyebrow">代码训练 · ${esc(state.codeSession.title)}</p><h1 class="hero-title">${complete ? '这一轮训练完成了。' : '把“好像懂了”推进成讲得明白。'}</h1><div class="training-header glass-card"><div class="progress-top"><b>任务进度</b><span>${Math.min(p.step + 1, 5)} / 5</span></div><div class="bar"><i style="width:${p.step * 20}%"></i></div><div class="step-list">${steps.map((step, index) => `<div class="step ${index < p.step ? 'complete' : index === p.step ? 'current' : ''}"><span class="step-state">${index < p.step ? '✓' : index + 1}</span><span><b>${step}</b><small>${['确定输入与输出', '补全关键条件', '理解执行顺序', '迁移到最小场景', '形成理解摘要'][index]}</small></span><em>${index < p.step ? '已完成' : index === p.step ? '进行中' : '待开始'}</em></div>`).join('')}</div></div>${activity}</section>`, { useNav: false, useBack: true });
   }
   function trainingActivity(step) {
     const p = state.trainingProgress; const meta = state.codeSession.trainingMeta || codeMeta(state.codeSession.codeSnippet);
@@ -519,13 +538,17 @@
       return `<div class="exercise glass-card"><span class="card-kicker">步骤 3 · 代码排序</span><h3>把执行顺序排正确。</h3><div class="sort-list">${p.order.map((value, index) => `<div><b>${index + 1}. ${blocks[value]}</b><span>${button('↑', 'sort-move', { className: 'ghost mini', disabled: index === 0, data: { index, direction: 'up' } })}${button('↓', 'sort-move', { className: 'ghost mini', disabled: index === p.order.length - 1, data: { index, direction: 'down' } })}</span></div>`).join('')}</div>${p.order.join(',') === '0,1,2' ? '<p class="feedback good">顺序正确：先判断，再决定是否走澄清分支。</p>' : ''}${button('提交排序', 'complete-training-step', { disabled: p.order.join(',') !== '0,1,2' })}</div>`;
     }
     if (step === 3) return `<div class="exercise glass-card"><span class="card-kicker">步骤 4 · 最小仿写</span><h3>围绕“${esc(meta.condition)}”写一个最小分支。</h3><textarea class="code-input" data-field="imitate" placeholder="例如：if (${esc(meta.condition)}) return '分支结果';">${esc(p.imitate)}</textarea><p>检查是否包含条件判断和返回结果；不运行真实代码。</p>${button('检查最小仿写', 'check-imitate')}</div>`;
-    return `<div class="exercise glass-card"><span class="card-kicker">步骤 5 · 检查这段能不能用</span><h3>检查 ${esc(meta.name)} 的关键边界。</h3>${['有没有默认分支', `${meta.input}为空怎么办`, '返回格式是否正确', meta.hasApi ? '请求失败时如何处理' : '是否需要补测试样例'].map((label, index) => `<label class="check-row"><input type="checkbox" data-action="toggle-check" data-index="${index}" ${p.checks.includes(index) ? 'checked' : ''}><span>${esc(label)}</span></label>`).join('')}${button('完成训练', 'finish-training', { disabled: p.checks.length !== 4 })}</div>`;
+    const guide = state.codeSession.summaryGuide || { input: ['当前收到的信息'], condition: ['是否满足关键条件'], outcome: ['决定下一步怎么处理'] };
+    const slots = p.summarySlots || {};
+    const slot = (key, label) => `<label class="summary-slot"><span>${label}</span><div>${guide[key].map((option, index) => `<button class="choice ${slots[key] === index ? 'selected' : ''}" data-action="summary-select" data-slot="${key}" data-index="${index}">${esc(option)}</button>`).join('')}</div></label>`;
+    const sentence = slots.input !== undefined && slots.condition !== undefined && slots.outcome !== undefined ? `这段内容会先看${guide.input[slots.input]}，再根据${guide.condition[slots.condition]}，决定${guide.outcome[slots.outcome]}。` : '';
+    return `<div class="exercise glass-card"><span class="card-kicker">步骤 5 · 一句话讲明白</span><h3>现在不必逐行看代码。把这段逻辑讲成一句人话。</h3><p>先选择三个关键部分，再确认或改写成你的理解摘要。</p>${slot('input', '它先看什么信息？')}${slot('condition', '再根据什么情况判断？')}${slot('outcome', '最后决定什么结果？')}${sentence ? `<label class="summary-edit"><span>我的理解摘要</span><textarea data-field="understandingSummary">${esc(p.understandingSummary || sentence)}</textarea></label>` : ''}${sentence ? button('保存这句话并完成训练', 'submit-summary') : button('先选择三个部分', 'noop', { disabled: true })}</div>`;
   }
-  function trainingSummary() { return `<div class="result-card"><span class="answer-label">训练完成</span><h2 class="answer-title">已形成一条代码理解记录。</h2><p class="answer-copy">掌握点：输入、分支与返回值。<br>下一步：在真实代码里再找一次默认分支。</p>${button('保存为代码理解记录', 'save-code-record')}</div>`; }
+  function trainingSummary() { return `<div class="result-card"><span class="answer-label">训练完成</span><h2 class="answer-title">你已经能把这段逻辑讲清楚。</h2><div class="record-detail"><b>我的理解摘要</b><p>${esc(state.trainingProgress.understandingSummary || '已完成理解摘要。')}</p><b>本节掌握点</b><p>知道它看什么信息、按什么判断、会带来什么结果。</p></div><p class="answer-copy">下一步：保存这次理解，之后回看时不必从头读代码。</p>${button('保存为代码理解记录', 'save-code-record')}</div>`; }
   function codeRecordDetail() {
     const item = state.viewingCodeRecord;
     if (!item) { move('code', { history: false }); return code(); }
-    return page(`<section><p class="eyebrow">代码理解记录</p><h1 class="hero-title">${esc(item.title)}</h1><div class="result-card"><span class="answer-label">${esc(item.sourceType || item.source)}</span><h2 class="answer-title">${esc(item.status || '已保存')}</h2><p class="answer-copy">训练方向：${esc(item.trainingDirection || '基础训练')}<br>能力单元：${esc(item.unit || '待补充')}<br>训练小课：${esc(item.lesson || '待补充')}</p><div class="record-detail"><b>掌握点</b><p>${esc((item.masteredPoints || ['整体作用']).join(' / '))}</p><b>薄弱点</b><p>${esc((item.weakPoints || []).join(' / ') || '暂无')}</p><b>下一步建议</b><p>${esc(item.nextSuggestion || '继续训练')}</p></div>${button('继续训练', 'resume-viewed-code-record')}</div></section>`, { useNav: false, useBack: true });
+    return page(`<section><p class="eyebrow">代码理解记录</p><h1 class="hero-title">${esc(item.title)}</h1><div class="result-card"><span class="answer-label">${esc(item.sourceType || item.source)}</span><h2 class="answer-title">${esc(item.status || '已保存')}</h2><p class="answer-copy">训练方向：${esc(item.trainingDirection || '基础训练')}<br>能力单元：${esc(item.unit || '待补充')}<br>训练小课：${esc(item.lesson || '待补充')}</p><div class="record-detail">${item.understandingSummary ? `<b>我的理解摘要</b><p>${esc(item.understandingSummary)}</p>` : ''}<b>掌握点</b><p>${esc((item.masteredPoints || ['整体作用']).join(' / '))}</p><b>薄弱点</b><p>${esc((item.weakPoints || []).join(' / ') || '暂无')}</p><b>下一步建议</b><p>${esc(item.nextSuggestion || '继续训练')}</p></div>${button('继续训练', 'resume-viewed-code-record')}</div></section>`, { useNav: false, useBack: true });
   }
 
   const experiencePrompts = [
@@ -538,10 +561,8 @@
   function portfolio() {
     const plan = targetPlan();
     const latestCase = state.trainingCases[0];
-    const progress = state.factCandidates.length
-      ? `当前有 ${state.confirmedFacts.length} 条已确认内容、${state.pendingFacts.length} 条待补充。完成确认后，草稿会保存在“我的 · 作品集草稿”。`
-      : '选择一种内容来源后，系统会先帮助你澄清或读取训练记录，再进入确认与草稿步骤。';
-    return page(`<section><p class="eyebrow">作品集</p><h1 class="hero-title">先确认内容来源，<br>再让表达更有说服力。</h1><div class="notice"><strong>围绕“${esc(goalLabel(plan.id))}”：</strong>${esc(plan.portfolioHint)}</div><div class="route-choice glass-card"><button data-action="start-experience"><span class="round-icon">${icon('✓')}</span><span><b>真实经历</b><small>逐步补齐职责、产物、数据、协作和证明材料</small></span>${icon('›')}</button><button data-action="${latestCase ? 'use-training-case' : 'start-composite'}" ${latestCase ? 'data-index="0"' : ''}><span class="round-icon green">${icon('✦')}</span><span><b>个人训练案例</b><small>${latestCase ? `${esc(latestCase.title)} · 可作为训练案例整理` : '先完成一次项目化综合练习'}</small></span>${icon('›')}</button></div><section class="portfolio-flow-note"><span class="round-icon amber">${icon('◆')}</span><div><b>确认与保存会在流程中完成</b><small>${esc(progress)}</small></div></section><p class="quiet-note">真实经历可以写真实职责与已证明结果；训练案例只能写为独立训练，不得写成上线、团队或工作项目。</p></section>`);
+    const claims = state.portfolioClaims.length;
+    return page(`<section><p class="eyebrow">作品集 · 经历表达</p><h1 class="hero-title">先整理你的陈述与材料，<br>再生成不越界的表达。</h1><div class="notice"><strong>围绕“${esc(goalLabel(plan.id))}”：</strong>${esc(plan.portfolioHint)}</div><div class="route-choice glass-card"><button data-action="start-claim-workbench" data-mode="experience"><span class="round-icon">${icon('✓')}</span><span><b>我的经历</b><small>整理职责、产物、结果、协作范围与材料说明</small></span>${icon('›')}</button><button data-action="${latestCase ? 'start-claim-workbench' : 'start-composite'}" data-mode="training" ${latestCase ? 'data-index="0"' : ''}><span class="round-icon green">${icon('✦')}</span><span><b>个人训练案例</b><small>${latestCase ? `${esc(latestCase.title)} · 可整理为训练案例表达` : '先完成一次项目化综合练习'}</small></span>${icon('›')}</button><button data-action="open-claim-review"><span class="round-icon amber">${icon('◇')}</span><span><b>候选表达与草稿</b><small>${claims ? `已有 ${claims} 条表达主张` : '先整理一种内容来源'}</small></span>${icon('›')}</button></div><section class="portfolio-flow-note"><span class="round-icon amber">${icon('◆')}</span><div><b>平台帮你控制表达边界</b><small>关联材料只记录用户提供的出处；平台不会对材料真实性或实际贡献作出认证。</small></div></section><p class="quiet-note">真实经历与个人训练案例会分开标注。候选表达由你确认使用，并由你对对外表述负责。</p></section>`);
   }
   function beginExperience() {
     if (!state.experienceFlow) state.experienceFlow = { step: 0, draft: '', messages: [{ role: 'ai', text: '先从一段真实经历开始。接下来我会逐步确认职责、交付物、数据、协作边界和证明材料，不会替你补事实。', actions: [] }, { role: 'ai', text: experiencePrompts[0], actions: [] }], answers: [] };
@@ -607,8 +628,64 @@
   function factSnapshot(item) { return { id: item.id, title: item.title, detail: item.detail, strength: item.strength, evidence: item.evidence, type: item.type, status: item.status }; }
   function draftVersion() {
     const item = state.viewingDraft; if (!item) { move('portfolio-drafts', { history: false }); return draft(); }
-    const sources = item.factSnapshots || state.confirmedFacts.filter(fact => item.confirmedFactIds?.includes(fact.id)).map(factSnapshot);
-    return page(`<section><p class="eyebrow">作品集草稿 · 版本回看</p><h1 class="hero-title">${esc(item.title)}</h1><div class="result-card"><span class="answer-label">${esc(item.savedAt)} · 版本来源已冻结</span><p class="draft-copy">${esc(item.body || item.note)}</p><div class="fact-reference"><b>引用来源快照</b>${sources.length ? sources.map(fact => `<span><strong>${esc(fact.title)}</strong><small>${esc(fact.detail)} · ${esc(fact.strength)} · ${esc(fact.evidence)}</small></span>`).join('') : '<span>早期版本未保存来源快照</span>'}</div><div class="action-row">${button('以此版本继续编辑', 'edit-draft-version')}${button('返回版本列表', 'back', { className: 'ghost' })}</div></div></section>`, { useNav: false, useBack: true });
+    const sources = item.claimSnapshots || item.factSnapshots || state.portfolioClaims.filter(claim => item.confirmedFactIds?.includes(claim.id)).map(factSnapshot);
+    return page(`<section><p class="eyebrow">候选表达 · 版本回看</p><h1 class="hero-title">${esc(item.title)}</h1><div class="result-card"><span class="answer-label">${esc(item.savedAt)} · 来源快照已冻结</span><p class="draft-copy">${esc(item.body || item.note)}</p><div class="fact-reference"><b>关联主张快照</b>${sources.length ? sources.map(source => `<span><strong>${esc(source.title)}</strong><small>${esc(source.statement || source.detail || '')} · ${esc(source.roleScope || source.strength || '范围待核对')} · ${esc(source.materialStatus || source.evidence || '材料说明')}</small></span>`).join('') : '<span>这是早期保存的版本，未保留主张快照。</span>'}</div><div class="action-row">${button('以此版本继续编辑', 'edit-draft-version')}${button('返回版本列表', 'back', { className: 'ghost' })}</div></div></section>`, { useNav: false, useBack: true });
+  }
+
+  const claimQuestions = [
+    ['职责范围', '你具体负责或参与了哪一部分？', '只描述你实际完成的范围。'],
+    ['交付物', '你留下了什么可以说明过程的产物？', '例如需求说明、原型、Demo、测试记录或其他材料说明。'],
+    ['结果与观察', '有什么结果、反馈或观察？没有也可以写“暂无”。', '不需要为了完整而补造数据。'],
+    ['协作范围', '哪些由你完成，哪些由其他人完成？', '这会影响“参与、协助、负责模块”等表达。'],
+    ['材料说明', '你能关联哪些材料或出处？', '材料说明用于回看来源，不构成平台认证。']
+  ];
+  function claimStatusLabel(item) {
+    if (item.approved) return '已确认用于候选表达';
+    if (item.expressionRisk === 'high') return '风险过高，不建议这样表达';
+    if (item.materialStatus === 'linked') return '已关联材料';
+    return item.materialStatus === 'none' ? '材料不足' : '需要你核对';
+  }
+  function startClaimWorkbench(mode) {
+    if (mode === 'training') {
+      const record = state.trainingCases[0];
+      if (!record) { flash('先在“实操”完成一项个人训练案例。'); return; }
+      state.claimFlow = { mode, step: 5, answers: [record.title, record.deliverable, record.reflection, '个人独立训练', '平台内训练记录'], record };
+      makeClaimsFromFlow(); move('portfolio-claim-review'); return;
+    }
+    state.claimFlow = { mode: 'experience', step: 0, answers: [] };
+    move('portfolio-claims');
+  }
+  function claimWorkbench() {
+    const flow = state.claimFlow || { mode: 'experience', step: 0, answers: [] };
+    const [label, question, hint] = claimQuestions[flow.step];
+    const history = flow.answers.map((value, index) => `<article class="evidence-answer"><span>${index + 1}</span><div><b>${claimQuestions[index][0]}</b><small>${esc(value)}</small></div>${icon('✓')}</article>`).join('');
+    return page(`<section class="evidence-workbench"><p class="eyebrow">作品集 · 整理经历陈述与材料</p><h1 class="hero-title">先整理你怎么说、<br>有哪些材料，再决定怎么写。</h1><div class="evidence-guard"><span class="round-icon amber">${icon('◇')}</span><div><b>AI 表达边界助手</b><small>我不会判断材料是否真实；我会帮你整理角色范围、材料说明和表达风险。</small></div></div><div class="evidence-progress">${claimQuestions.map(([name], index) => `<span class="${index < flow.step ? 'done' : index === flow.step ? 'current' : ''}"><i>${index < flow.step ? '✓' : index + 1}</i><b>${name}</b></span>`).join('')}</div>${history ? `<section class="evidence-history"><div class="section-head"><h2 class="section-title">已整理内容</h2><span>${flow.answers.length} 条</span></div>${history}</section>` : ''}<article class="evidence-question glass-card"><span class="card-kicker">正在整理 · ${label}</span><h3>${esc(question)}</h3><p>${esc(hint)}</p><label class="evidence-input"><span>你的陈述或材料说明</span><textarea data-field="claimDraft" placeholder="写下你愿意自行核对的内容；没有可补充材料时可以写“暂无”"></textarea></label>${button('保存这一项', 'claim-submit')}</article></section>`, { useNav: false, useBack: true });
+  }
+  function makeClaimsFromFlow() {
+    const flow = state.claimFlow; const a = flow.answers;
+    const isTraining = flow.mode === 'training'; const material = a[4] || '暂无';
+    const materialStatus = /暂无|没有|无/.test(material) ? 'none' : 'linked';
+    const claims = [
+      { title: isTraining ? '训练案例主题' : '我的职责陈述', statement: a[0] || '', roleScope: isTraining ? '个人独立训练' : /负责|独立/.test(a[0] || '') ? '负责模块' : '参与', recommendedWording: a[0] || '', materialStatus, expressionRisk: 'medium' },
+      { title: '可说明的交付或过程', statement: a[1] || '', roleScope: isTraining ? '个人独立训练' : '参与', recommendedWording: a[1] || '', materialStatus, expressionRisk: 'medium' },
+      { title: '结果与观察', statement: a[2] || '暂无', roleScope: isTraining ? '个人独立训练' : '参与', recommendedWording: /暂无|没有/.test(a[2] || '') ? '在当前材料中未补充量化结果。' : a[2], materialStatus, expressionRisk: /暂无|没有/.test(a[2] || '') ? 'medium' : 'low' },
+      { title: '角色边界', statement: a[3] || '', roleScope: isTraining ? '个人独立训练' : /主导/.test(a[3] || '') ? '需要核对' : '参与', recommendedWording: a[3] || '', materialStatus: 'unreviewed', expressionRisk: /主导/.test(`${a[0]} ${a[3]}`) ? 'high' : 'medium' }
+    ].map((item, index) => ({ id: uid('claim'), sourceType: isTraining ? 'training_case' : 'user_statement', materialReferences: material ? [material] : [], approved: false, order: index, createdAt: now(), ...item }));
+    state.portfolioClaims = claims;
+    state.materialReferences = material ? [{ id: uid('material'), description: material, sourceType: isTraining ? 'training_case' : 'user_statement', status: materialStatus, createdAt: now() }] : [];
+  }
+  function claimReview() {
+    const items = state.portfolioClaims;
+    const approved = approvedClaims().length;
+    if (!items.length) return page(`<section><p class="eyebrow">候选表达主张</p><h1 class="hero-title">先整理一种内容来源。</h1><div class="empty glass-card"><b>还没有可回看的表达主张。</b><small>从“我的经历”或“个人训练案例”开始。</small>${button('整理我的经历', 'start-claim-workbench', { data: { mode: 'experience' } })}</div></section>`, { useNav: false, useBack: true });
+    return page(`<section><p class="eyebrow">候选表达主张</p><h1 class="hero-title">看清来源与边界，<br>再确认是否使用。</h1><div class="notice">平台会提示材料完整度与表达风险，但不认证材料真实性或实际贡献。每条表述都需要由你确认后才能进入草稿。</div><div class="claim-list">${items.map((item, index) => `<article class="fact-card glass-card"><header><span class="status ${item.expressionRisk === 'high' ? 'rejected' : item.approved ? 'confirmed' : 'pending'}">${esc(claimStatusLabel(item))}</span><small>${item.sourceType === 'training_case' ? '个人训练案例' : '用户陈述'}</small></header><h3>${esc(item.title)}</h3><p>${esc(item.statement)}</p><div class="fact-meta"><span>角色范围：${esc(item.roleScope)}</span><span>材料：${esc(item.materialStatus === 'linked' ? '已关联材料' : item.materialStatus === 'none' ? '材料不足' : '未检查')}</span><span>表达风险：${item.expressionRisk === 'high' ? '高' : item.expressionRisk === 'low' ? '低' : '中'}</span></div><div class="record-detail"><b>推荐措辞</b><p>${esc(item.recommendedWording)}</p></div><footer>${button(item.approved ? '已确认使用' : '确认用于候选表达', 'claim-approve', { className: 'secondary mini', disabled: item.expressionRisk === 'high', data: { index } })}${button('修改表述', 'claim-edit', { className: 'ghost mini', data: { index } })}</footer></article>`).join('')}</div><div class="intercept glass-card"><span class="card-kicker">用户确认</span><h3>候选表达不是平台背书。</h3><p>保存草稿前，你需要确认表述与实际情况及所提供材料一致，并自行承担真实性、完整性和对外使用责任。</p></div>${button(`生成候选草稿${approved ? `（${approved} 条主张）` : ''}`, 'open-candidate-draft', { disabled: !approved })}</section>`, { useNav: false, useBack: true });
+  }
+  function candidateDraft() {
+    const claims = approvedClaims();
+    if (!claims.length) { move('portfolio-claim-review', { history: false }); return claimReview(); }
+    const hasTraining = claims.some(item => item.sourceType === 'training_case');
+    const editor = state.draftEditor || { title: hasTraining ? '个人训练案例：我的能力练习' : '我的经历表达', body: claims.map(item => `- ${item.recommendedWording}`).join('\n'), claimSnapshots: claims.map(item => ({ ...item })), sourceType: hasTraining ? '个人训练案例' : '用户陈述', basedOn: null };
+    return page(`<section><p class="eyebrow">候选表达草稿</p><h1 class="hero-title">一份可以继续修改的<br>候选表达。</h1><div class="notice">本草稿基于用户陈述与已关联材料生成；请在保存前确认它与你的实际情况一致。</div><div class="result-card"><span class="answer-label">${esc(editor.sourceType)}</span><label class="draft-field">草稿标题<input data-field="candidateDraftTitle" value="${esc(editor.title)}"></label><label class="draft-field">草稿内容<textarea data-field="candidateDraftBody">${esc(editor.body)}</textarea></label><div class="fact-reference"><b>本版本引用的主张快照</b>${editor.claimSnapshots.map(item => `<span>${esc(item.title)} · ${esc(item.roleScope)}</span>`).join('')}</div><label class="declaration"><input type="checkbox" data-field="userDeclaration">我确认上述候选表达与我的实际情况及所提供材料一致，并自行对真实性、完整性和对外使用负责。</label>${button('确认并保存版本', 'save-candidate-draft')}</div></section>`, { useNav: false, useBack: true });
   }
 
   function assetSources() {
@@ -619,7 +696,7 @@
       practice: { title: 'AI 实操记录', glyph: '✦', key: 'workRecords', items: state.workRecords.filter(item => item.kind === 'practice'), empty: '完成一次 AI 实操后，会保留判断过程。', action: 'start-practice', actionLabel: '再次实操' },
       code: { title: '代码理解记录', glyph: '⌘', key: 'codeRecords', items: state.codeRecords, empty: '完成代码训练后，会保留掌握点和下一步。', action: 'open-code', actionLabel: '去代码训练' },
       trainingCase: { title: '个人训练案例', glyph: '✦', key: 'trainingCases', items: state.trainingCases, empty: '完成一次项目化综合练习后，会在这里保留你的提交、检查反馈与复盘。', action: 'start-composite', actionLabel: '开始练习' },
-      draft: { title: '作品集草稿', glyph: '▣', key: 'portfolioDrafts', items: state.portfolioDrafts, empty: '确认可写事实后，才能保存作品集草稿。', action: 'portfolio-facts', actionLabel: '确认事实' }
+      draft: { title: '候选表达草稿', glyph: '▣', key: 'portfolioDrafts', items: state.portfolioDrafts, empty: '先整理经历或训练案例，再确认候选表达主张。', action: 'open-claim-review', actionLabel: '查看主张' }
     };
   }
   function assetStatus(source) {
@@ -635,17 +712,18 @@
     const sources = assetSources();
     const assetCount = Object.values(sources).reduce((total, source) => total + source.items.length, 0);
     const draftCount = state.portfolioDrafts.length;
-    const factTotal = state.confirmedFacts.length + state.pendingFacts.length + state.rejectedFacts.length;
+    const approvedCount = approvedClaims().length;
+    const claimTotal = state.portfolioClaims.length;
     const focus = state.codeSession && (state.trainingProgress?.step || 0) < 5
       ? { title: state.codeSession.title, note: `代码训练 · 已完成 ${state.trainingProgress?.step || 0} / 5 步`, action: 'continue-code', label: '继续训练' }
-      : state.practice?.mode === 'composite'
-        ? { title: compositeTheme().title, note: `项目化综合练习 · 第 ${state.practice.step + 1} 步`, action: 'start-composite', label: '继续练习' }
+        : state.practice?.mode === 'composite'
+          ? { title: compositeTheme().title, note: `项目化综合练习 · 第 ${state.practice.step + 1} 步`, action: 'nav', label: '继续练习', data: { route: 'practice' } }
         : state.trainingCases[0]
           ? { title: state.trainingCases[0].title, note: '个人训练案例 · 可回看检查与复盘', action: 'open-training-cases', label: '查看案例' }
         : state.practiceRecords[0]
           ? { title: state.practiceRecords[0].title, note: state.practiceRecords[0].nextSuggestion || '重新巩固一次理解', action: 'start-practice', label: '开始复习' }
           : { title: '从一个问题开始', note: '保存学习、训练或训练案例后，它们会沉淀在这里。', action: 'nav', label: '去首页', data: { route: 'home' } };
-    return page(`<section class="asset-page"><div class="asset-page-head"><div><p class="eyebrow">我的 · 能力资产</p><h1 class="hero-title">今天的积累，<br>会成为下一次的底气。</h1></div><button class="profile-chip" data-action="open-goal-setup">${icon('◉')} ${esc(goalLabel(state.userGoalProfile.target))}</button></div><div class="asset-hero glass-card"><div class="asset-hero-copy"><span class="card-kicker">能力资产总览</span><h2>让做过的事，<br>持续为你所用。</h2><p>学习、训练、个人训练案例和表达都会在这里回看、继续并形成可信积累。</p></div><div class="asset-stat"><div><b>${assetCount}</b><small>已沉淀资产</small></div><div><b>${state.confirmedFacts.length}</b><small>已确认内容</small></div></div></div><div class="section-head"><h2 class="section-title">当前推进</h2><span class="section-meta">1 件待处理</span></div><div class="asset-focus glass-card"><span class="round-icon green">${icon('↗')}</span><span><em>下一步</em><b>${esc(focus.title)}</b><small>${esc(focus.note)}</small></span>${button(focus.label, focus.action, { className: 'secondary', data: focus.data || {} })}</div><div class="section-head"><h2 class="section-title">可信表达状态</h2><button class="text-action" data-action="portfolio-facts">去确认</button></div><div class="trust-strip"><button data-action="portfolio-facts"><b>${state.confirmedFacts.length}</b><span>可写内容</span></button><button data-action="portfolio-facts"><b>${state.pendingFacts.length}</b><span>待补充</span></button><button data-action="portfolio-drafts"><b>${draftCount}</b><span>草稿版本</span></button></div>${factTotal === 0 ? `<div class="asset-empty-tip">还没有可用于表达的内容。把真实经历说清楚，或完成一次项目化综合练习后，会在这里形成可信线索。</div>` : ''}<div class="section-head"><h2 class="section-title">能力资产</h2><span class="section-meta">${assetCount} 条</span></div><div class="asset-grid">${Object.entries(sources).map(([id, source]) => assetTile(id, source)).join('')}</div><div class="section-head"><h2 class="section-title">管理与回顾</h2></div><div class="manage-list glass-card"><button data-action="review-history">${icon('↺')}<span><b>对话历史</b><small>回顾曾经问过的问题</small></span>${icon('›')}</button><button data-action="open-goal-setup">${icon('◉')}<span><b>调整当前目标</b><small>${esc(goalLabel(state.userGoalProfile.target))}</small></span>${icon('›')}</button></div></section>`);
+    return page(`<section class="asset-page"><div class="asset-page-head"><div><p class="eyebrow">我的 · 能力资产</p><h1 class="hero-title">今天的积累，<br>会成为下一次的底气。</h1></div><button class="profile-chip" data-action="open-goal-setup">${icon('◉')} ${esc(goalLabel(state.userGoalProfile.target))}</button></div><div class="asset-hero glass-card"><div class="asset-hero-copy"><span class="card-kicker">能力资产总览</span><h2>让做过的事，<br>持续为你所用。</h2><p>学习、训练、个人训练案例和候选表达都会在这里回看、继续并形成可信积累。</p></div><div class="asset-stat"><div><b>${assetCount}</b><small>已沉淀资产</small></div><div><b>${approvedCount}</b><small>候选表达主张</small></div></div></div><div class="section-head"><h2 class="section-title">当前推进</h2><span class="section-meta">1 件待处理</span></div><div class="asset-focus glass-card"><span class="round-icon green">${icon('↗')}</span><span><em>下一步</em><b>${esc(focus.title)}</b><small>${esc(focus.note)}</small></span>${button(focus.label, focus.action, { className: 'secondary', data: focus.data || {} })}</div><div class="section-head"><h2 class="section-title">表达状态</h2><button class="text-action" data-action="open-claim-review">查看主张</button></div><div class="trust-strip"><button data-action="open-claim-review"><b>${approvedCount}</b><span>已确认使用</span></button><button data-action="open-claim-review"><b>${claimTotal - approvedCount}</b><span>待核对主张</span></button><button data-action="open-claim-review"><b>${draftCount}</b><span>草稿版本</span></button></div>${claimTotal === 0 ? `<div class="asset-empty-tip">还没有可用于表达的内容。整理一段经历陈述，或完成一次项目化综合练习后，会在这里形成可回看的主张。</div>` : ''}<div class="section-head"><h2 class="section-title">能力资产</h2><span class="section-meta">${assetCount} 条</span></div><div class="asset-grid">${Object.entries(sources).map(([id, source]) => assetTile(id, source)).join('')}</div><div class="section-head"><h2 class="section-title">管理与回顾</h2></div><div class="manage-list glass-card"><button data-action="review-history">${icon('↺')}<span><b>对话历史</b><small>回顾曾经问过的问题</small></span>${icon('›')}</button><button data-action="open-goal-setup">${icon('◉')}<span><b>调整当前目标</b><small>${esc(goalLabel(state.userGoalProfile.target))}</small></span>${icon('›')}</button></div></section>`);
   }
   function assetDetail() {
     const source = assetSources()[state.assetView];
@@ -655,7 +733,7 @@
   function assetItemCard(item, index, source) {
     const detailAction = source.key === 'codeRecords' ? 'view-code-record' : source.key === 'portfolioDrafts' ? 'view-draft-version' : 'view-asset-record';
     const continuation = source.key === 'codeRecords' ? 'resume-code-record' : source.action;
-    const hasContinue = source.title !== '作品集草稿';
+    const hasContinue = source.key !== 'portfolioDrafts';
     return `<article class="asset-item glass-card"><header><span class="round-icon">${icon(source.glyph)}</span><span><b>${esc(item.title)}</b><small>${esc(item.savedAt || '已保存')}</small></span><span class="asset-status">${esc(item.status || '已沉淀')}</span></header><p>${esc(item.nextSuggestion || item.note || item.output || '可继续查看或处理。')}</p><footer>${button('查看', detailAction, { className: 'ghost mini', data: { asset: state.assetView, index } })}${hasContinue ? button(source.actionLabel, continuation, { className: 'secondary mini', data: { index } }) : ''}${button('删除', 'delete-asset-record', { className: 'ghost mini', data: { asset: state.assetView, index } })}</footer></article>`;
   }
   function assetRecordDetail() {
@@ -678,6 +756,7 @@
     if (state.ui.modal === 'profile') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">目标设置</span><h2>调整你的学习目标</h2><label>目标<input data-field="profileTarget" value="${esc(state.userGoalProfile.target)}" placeholder="例如：转向 AI 产品"></label><label>基础<input data-field="profileLevel" value="${esc(state.userGoalProfile.level)}" placeholder="例如：了解基础概念"></label><label>可投入时间<input data-field="profileTime" value="${esc(state.userGoalProfile.availableTime)}" placeholder="例如：每周 6–8 小时"></label><div class="action-row">${button('保存设置', 'save-profile')}${button('取消', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     if (state.ui.modal === 'history') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">对话回顾</span><h2>最近问过的问题</h2>${state.historyItems.length ? `<div class="history-list">${state.historyItems.slice(0, 6).map(item => `<div><b>${esc(item.title)}</b><small>${esc(item.savedAt)}</small></div>`).join('')}</div>` : '<p>还没有已保存的对话。</p>'}<div class="action-row">${button('继续当前对话', 'close-modal')}${button('关闭', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     if (state.ui.modal === 'delete') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">删除确认</span><h2>确定删除这条记录吗？</h2><p>删除后可在本次提示中撤销；关闭提示后会保持删除状态。</p><div class="action-row">${button('确认删除', 'confirm-delete')}${button('保留记录', 'close-modal', { className: 'ghost' })}</div></section></div>`;
+    if (state.ui.modal === 'claim-edit') { const item = state.portfolioClaims[state.ui.claimIndex]; return `<div class="modal-mask"><section class="modal"><span class="card-kicker">修改候选表达主张</span><h2>调整陈述与角色范围</h2><label>主张标题<input data-field="claimTitle" value="${esc(item.title)}"></label><label>你的陈述<textarea data-field="claimStatement">${esc(item.statement)}</textarea></label><label>推荐措辞<textarea data-field="claimWording">${esc(item.recommendedWording)}</textarea></label><label>角色范围<select data-field="claimRole">${['参与', '协助', '负责模块', '个人独立训练', '需要核对'].map(value => `<option ${value === item.roleScope ? 'selected' : ''}>${value}</option>`).join('')}</select></label><div class="action-row">${button('保存修改', 'save-claim')}${button('取消', 'close-modal', { className: 'ghost' })}</div></section></div>`; }
     if (state.ui.modal === 'fact-edit') { const item = state.factCandidates[state.ui.factIndex]; return `<div class="modal-mask"><section class="modal"><span class="card-kicker">修改事实卡</span><h2>只保留可证明的内容</h2><label>内容<input data-field="factTitle" value="${esc(item.title)}"></label><label>说明<textarea data-field="factDetail">${esc(item.detail)}</textarea></label><label>表达强度<select data-field="factStrength">${['参与', '协助', '负责', '主导'].map(value => `<option ${value === item.strength ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>证据状态<select data-field="factEvidence">${['已证明', '训练记录已保存', '待补充', '无证明'].map(value => `<option ${value === item.evidence ? 'selected' : ''}>${value}</option>`).join('')}</select></label><div class="action-row">${button('保存修改', 'save-fact')}${button('取消', 'close-modal', { className: 'ghost' })}</div></section></div>`; }
     if (state.ui.modal === 'save-error') return `<div class="modal-mask"><section class="modal"><span class="card-kicker">保存失败</span><h2>内容仍保留在当前页面。</h2><p>请重试保存；系统不会因为一次保存失败清空你的输入。</p><div class="action-row">${button('重试保存', 'retry-save')}${button('暂不保存', 'close-modal', { className: 'ghost' })}</div></section></div>`;
     return '';
@@ -690,7 +769,8 @@
     const routes = {
       home, quiz: quizScreen, practice: practiceScreen, 'practice-hub': practiceHub, code, 'code-direction': directionScreen, 'code-training': training,
       portfolio, 'portfolio-experience': beginExperience, 'portfolio-facts': facts, 'portfolio-overclaim': overclaim,
-      'portfolio-drafts': draft, 'portfolio-draft-version': draftVersion,
+      'portfolio-drafts': draft, 'portfolio-draft-version': draftVersion, 'portfolio-claims': claimWorkbench,
+      'portfolio-claim-review': claimReview, 'portfolio-candidate-draft': candidateDraft,
       'goal-setup': goalSetup, 'code-record-detail': codeRecordDetail,
       'asset-detail': assetDetail, 'asset-record-detail': assetRecordDetail, me
     };
@@ -708,7 +788,7 @@
   function eventHandler(event) {
     const node = event.target.closest('[data-action]'); if (!node || node.disabled) return;
     const action = node.dataset.action;
-    if (action === 'nav') move(node.dataset.route);
+    if (action === 'nav') move(node.dataset.route === 'practice' ? 'practice-hub' : node.dataset.route);
     else if (action === 'back') back();
     else if (action === 'choose-goal') state.goalChoice = node.dataset.value;
     else if (action === 'confirm-goal') { if (!state.goalChoice) flash('请选择一个当前优先目标，或直接跳过。'); else { state.userGoalProfile = { ...state.userGoalProfile, target: state.goalChoice }; state.onboardingComplete = true; move('home', { history: false }); flash('目标已保存，首页推荐已调整'); } }
@@ -728,6 +808,14 @@
     else if (action === 'quiz-next') { if (state.quiz.index < 2) state.quiz.index += 1; else { state.learningRecords.unshift({ id: uid('learning'), title: 'RAG 基础理解', note: '完成 3 道小测 · 待复习', nextSuggestion: '下一次尝试 AI 实操', savedAt: now() }); move('me'); flash('学习记录已保存到“我的”'); } }
     else if (action === 'start-practice') { state.practice = { step: 0, answers: [], responses: [], draft: '', feedback: null, target: targetPlan().id }; move('practice'); }
     else if (action === 'start-composite') move('practice-hub');
+    else if (action === 'start-claim-workbench') startClaimWorkbench(node.dataset.mode);
+    else if (action === 'claim-submit') { const text = input('claimDraft'); const flow = state.claimFlow; if (!text) flash('先写下你的陈述或材料说明。'); else { flow.answers.push(text); flow.step += 1; if (flow.step < claimQuestions.length) flash('这一项已保存，继续下一项。'); else { makeClaimsFromFlow(); move('portfolio-claim-review'); flash('已整理为候选表达主张，请逐条核对。'); } } }
+    else if (action === 'open-claim-review') move('portfolio-claim-review');
+    else if (action === 'claim-approve') { const item = state.portfolioClaims[Number(node.dataset.index)]; if (item.expressionRisk === 'high') flash('这条表述风险过高，请先降低表达强度或补充说明。'); else { item.approved = true; flash('已确认用于候选表达。'); } }
+    else if (action === 'claim-edit') { state.ui.claimIndex = Number(node.dataset.index); state.ui.modal = 'claim-edit'; }
+    else if (action === 'save-claim') { const item = state.portfolioClaims[state.ui.claimIndex]; item.title = input('claimTitle'); item.statement = input('claimStatement'); item.recommendedWording = input('claimWording'); item.roleScope = input('claimRole'); item.approved = false; item.expressionRisk = item.roleScope === '需要核对' ? 'high' : item.expressionRisk; state.ui.modal = null; flash('主张已修改，请重新确认是否用于候选表达。'); }
+    else if (action === 'open-candidate-draft') move('portfolio-candidate-draft');
+    else if (action === 'save-candidate-draft') { const title = input('candidateDraftTitle'); const body = input('candidateDraftBody'); const declared = document.querySelector('[data-field="userDeclaration"]')?.checked; if (!title || !body) flash('请先填写草稿标题和内容。'); else if (!declared) flash('请先确认这份候选表达与你的实际情况一致。'); else { const editor = state.draftEditor || {}; const snapshots = editor.claimSnapshots || approvedClaims().map(item => ({ ...item })); const sourceType = editor.sourceType || (snapshots.some(item => item.sourceType === 'training_case') ? '个人训练案例' : '用户陈述'); state.portfolioDrafts.unshift({ id: uid('draft'), title, body, sourceType, claimSnapshots: snapshots, userDeclarationAccepted: true, version: state.portfolioDrafts.length + 1, basedOn: editor.basedOn || null, savedAt: now(), nextSuggestion: '回看来源快照，必要时再生成新版本。' }); state.draftEditor = null; move('me'); flash('候选表达版本已保存，并冻结了来源快照。'); } }
     else if (action === 'choose-composite-theme') beginComposite(node.dataset.caseId);
     else if (action === 'composite-submit') { const response = input('compositeResponse'); if (!response) flash('先写下你的产品判断，再提交检查。'); else { state.practice.draft = response; state.practice.feedback = compositeFeedback(response); } }
     else if (action === 'composite-edit') state.practice.feedback = null;
@@ -747,22 +835,21 @@
     else if (action === 'sort-move') { const index = Number(node.dataset.index); const target = node.dataset.direction === 'up' ? index - 1 : index + 1; const order = state.trainingProgress.order; [order[index], order[target]] = [order[target], order[index]]; }
     else if (action === 'complete-training-step') { state.trainingProgress.step += 1; flash('当前步骤已完成'); }
     else if (action === 'check-imitate') { state.trainingProgress.imitate = input('imitate'); if (/if/.test(state.trainingProgress.imitate) && /return/.test(state.trainingProgress.imitate)) { state.trainingProgress.step += 1; flash('最小仿写通过检查'); } else flash('请补上条件判断 if 和返回结果 return 后再检查。'); }
-    else if (action === 'toggle-check') { const index = Number(node.dataset.index); const checks = state.trainingProgress.checks; const at = checks.indexOf(index); if (node.checked && at === -1) checks.push(index); if (!node.checked && at !== -1) checks.splice(at, 1); }
-    else if (action === 'finish-training') { state.trainingProgress.step = 5; flash('五步训练已完成'); }
-    else if (action === 'save-code-record') { const session = state.codeSession; const meta = session.trainingMeta || codeMeta(session.codeSnippet); const wrongFill = (state.trainingProgress.attempts || []).some(answer => answer !== 1); state.codeRecords.unshift({ id: uid('code-record'), title: session.title, sourceType: session.source, trainingDirection: session.trainingDirection, unit: session.unit, lesson: session.lesson, status: '已完成', codeSnippet: session.codeSnippet, masteredPoints: [`${meta.name} 的输入与输出`, `条件：${meta.condition}`, `默认返回：${meta.fallback}`], weakPoints: wrongFill ? [`条件“${meta.condition}”与返回值的对应关系`] : [], exerciseResult: '五步训练已完成', nextSuggestion: wrongFill ? '重新检查条件分支，再用一段相似代码练习' : '用另一段代码重复练习默认分支', savedAt: now() }); move('code'); state.codeTab = 'records'; flash('代码理解记录已保存'); }
+    else if (action === 'summary-select') { state.trainingProgress.summarySlots[node.dataset.slot] = Number(node.dataset.index); }
+    else if (action === 'submit-summary') { const summary = input('understandingSummary'); const slots = state.trainingProgress.summarySlots || {}; if (!summary || ['input', 'condition', 'outcome'].some(key => slots[key] === undefined)) flash('先补齐“信息、判断、结果”三部分。'); else { state.trainingProgress.understandingSummary = summary; state.trainingProgress.step = 5; flash('理解摘要已保存，你已经完成五步训练。'); } }
+    else if (action === 'save-code-record') { const session = state.codeSession; const meta = session.trainingMeta || codeMeta(session.codeSnippet); const wrongFill = (state.trainingProgress.attempts || []).some(answer => answer !== 1); state.codeRecords.unshift({ id: uid('code-record'), title: session.title, sourceType: session.source, trainingDirection: session.trainingDirection, unit: session.unit, lesson: session.lesson, status: '已完成', codeSnippet: session.codeSnippet, understandingSummary: state.trainingProgress.understandingSummary || '', masteredPoints: ['能说明这段内容接收什么信息', '能说明关键判断如何影响结果', '已形成自己的理解摘要'], weakPoints: wrongFill ? ['关键判断与结果的对应关系'] : [], exerciseResult: '五步代码理解训练已完成', nextSuggestion: wrongFill ? '回看关键判断，再用一段相似代码练习' : '从理解记录中回看这句话，再继续下一节', savedAt: now() }); move('code'); state.codeTab = 'records'; flash('代码理解记录已保存'); }
     else if (action === 'view-code-record') { state.viewingCodeRecord = state.codeRecords[Number(node.dataset.index)]; move('code-record-detail'); }
     else if (action === 'resume-code-record') { const item = state.codeRecords[Number(node.dataset.index)]; buildSession(item.title, '代码理解记录', item.trainingDirection || '基础训练库', { unit: item.unit, lesson: item.lesson }); move('code-training'); }
     else if (action === 'resume-viewed-code-record') { const item = state.viewingCodeRecord; buildSession(item.title, '代码理解记录', item.trainingDirection || '基础训练库', { unit: item.unit, lesson: item.lesson }); move('code-training'); }
-    else if (action === 'start-experience') { state.experienceFlow = null; move('portfolio-experience'); }
-    else if (action === 'portfolio-experience') move('portfolio-experience');
+    else if (action === 'start-experience' || action === 'portfolio-experience') startClaimWorkbench('experience');
     else if (action === 'experience-submit') { const text = input('experienceDraft'); const flow = state.experienceFlow; if (!text) { flash('请先写下真实内容；没有数据可以明确写“暂无数据”。'); } else if (/写厉害点|包装一下|写高级一点|写得像主导|编好看点/.test(text)) { appendExperience('user', text); move('portfolio-overclaim'); } else { appendExperience('user', text); flow.answers.push(text); flow.draft = ''; flow.step += 1; if (flow.step < 5) appendExperience('ai', experiencePrompts[flow.step]); else { appendExperience('ai', '材料已收齐。接下来我会把内容拆成可写、待补充与暂时不能写的事实卡，由你确认。'); generateFacts(); move('portfolio-facts'); flash('已生成事实卡，请逐项确认'); } } }
-    else if (action === 'portfolio-facts') move('portfolio-facts');
+    else if (action === 'portfolio-facts') move('portfolio-claim-review');
     else if (action === 'fact-status') { const item = state.factCandidates[Number(node.dataset.index)]; if (node.dataset.status === 'confirmed' && !canConfirmFact(item)) flash('这条内容证据不足，不能确认可写；请补充证明材料或降低表达强度。'); else { item.status = node.dataset.status; syncFacts(); flash('事实状态已更新'); } }
     else if (action === 'edit-fact') { state.ui.factIndex = Number(node.dataset.index); state.ui.modal = 'fact-edit'; }
     else if (action === 'save-fact') { const item = state.factCandidates[state.ui.factIndex]; item.title = input('factTitle'); item.detail = input('factDetail'); item.strength = input('factStrength'); item.evidence = input('factEvidence'); state.ui.modal = null; syncFacts(); flash('事实卡已修改'); }
     else if (action === 'remove-fact') { state.factCandidates.splice(Number(node.dataset.index), 1); syncFacts(); flash('事实卡已移除'); }
     else if (action === 'open-overclaim') move('portfolio-overclaim');
-    else if (action === 'make-draft') move('portfolio-drafts');
+    else if (action === 'make-draft') move('portfolio-candidate-draft');
     else if (action === 'save-draft') {
       const title = input('draftTitle'); const body = input('draftBody');
       if (!title || !body) { flash('请先填写草稿标题和内容。'); }
@@ -780,8 +867,8 @@
       }
     }
     else if (action === 'view-draft-version') { state.viewingDraft = state.portfolioDrafts[Number(node.dataset.index)]; move('portfolio-draft-version'); }
-    else if (action === 'edit-draft-version') { const item = state.viewingDraft; state.draftEditor = { title: item.title, body: item.body || '', factIds: item.confirmedFactIds || [], factSnapshots: item.factSnapshots ? item.factSnapshots.map(snapshot => ({ ...snapshot })) : null, sourceType: item.sourceType || '真实经历', basedOn: item.id }; move('portfolio-drafts'); }
-    else if (action === 'portfolio-drafts') move('portfolio-drafts');
+    else if (action === 'edit-draft-version') { const item = state.viewingDraft; state.draftEditor = { title: item.title, body: item.body || '', claimSnapshots: (item.claimSnapshots || item.factSnapshots || []).map(snapshot => ({ ...snapshot })), sourceType: item.sourceType || '用户陈述', basedOn: item.id }; move('portfolio-candidate-draft'); }
+    else if (action === 'portfolio-drafts') move('portfolio-candidate-draft');
     else if (action === 'open-training-cases') { state.assetView = 'trainingCase'; state.assetRecord = null; move('asset-detail'); }
     else if (action === 'use-training-case') { const item = state.trainingCases[Number(node.dataset.index)]; if (!item) { flash('还没有可引用的训练案例。'); return; } generateTrainingCaseFacts(item); move('portfolio-facts'); flash('已生成训练案例内容，请确认哪些可以进入表达'); }
     else if (action === 'open-profile') state.ui.modal = 'profile';

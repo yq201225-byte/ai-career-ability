@@ -59,6 +59,7 @@ async function fillValidExperience() {
       assert.equal(records.length, 1);
       assert.equal(records[0].result, '暂无可量化结果');
       assert.match(await page.locator('.source-card').innerText(), /知识库问答需求整理/);
+      await page.screenshot({ path: path.join(process.env.TEMP, 'ai-career-source-library-mobile.png'), fullPage: true });
     });
     await check('材料只在用户说明后显示，不伪装成已验证', async () => {
       await click('edit-experience');
@@ -75,7 +76,7 @@ async function fillValidExperience() {
       await click('choose-draft-source');
       assert.equal(await page.locator('[data-field="portfolioDraftBody"]').count(), 1);
       assert.equal(await page.locator('[data-action="claim-approve"]').count(), 0);
-      await page.screenshot({ path: path.join(process.env.TEMP, 'ai-career-portfolio-v2-mobile.png'), fullPage: true });
+      await page.screenshot({ path: path.join(process.env.TEMP, 'ai-career-writing-desk-mobile.png'), fullPage: true });
     });
     await check('草稿会提示职责放大和无依据结果', async () => {
       await fill('portfolioDraftBody', '我主导了全部工作，并显著提升转化率。');
@@ -91,6 +92,7 @@ async function fillValidExperience() {
       await page.locator('[data-field="portfolioDeclaration"]').check();
       await click('save-portfolio-draft');
       assert.equal((await stored('portfolioDrafts')).length, 1);
+      await page.screenshot({ path: path.join(process.env.TEMP, 'ai-career-writing-desk-list-mobile.png'), fullPage: true });
       await page.reload();
       assert.equal(await page.locator('[data-action="new-portfolio-draft"]').count(), 1);
       await click('open-experiences');

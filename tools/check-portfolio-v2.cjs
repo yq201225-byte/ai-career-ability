@@ -27,15 +27,20 @@ async function fresh(browser) {
   await click('nav', '[data-route="portfolio"]');
   await click('open-experiences');
   await click('new-experience');
+  await page.screenshot({ path: path.join(process.env.TEMP, 'ai-career-experience-guided-mobile.png'), fullPage: true });
   return context;
 }
 async function fillValidExperience() {
   await fill('experienceTitle', '知识库问答需求整理');
   await select('experienceRole', '参与');
   await fill('experienceWork', '整理用户访谈中的高频问题，并归纳首轮澄清需求。');
+  await click('experience-next');
   await fill('experienceDeliverable', '访谈问题清单和需求说明初稿。');
+  await click('experience-next');
   await select('experienceResult', '暂无可量化结果');
+  await click('experience-next');
   await fill('experienceCollaboration', '我负责整理和初稿，产品与研发共同评审。');
+  await click('experience-next');
 }
 
 (async () => {
@@ -43,16 +48,14 @@ async function fillValidExperience() {
   let context;
   try {
     context = await fresh(browser);
-    await check('纯数字不能保存为经历', async () => {
+    await check('纯数字不能越过第一步经历整理', async () => {
       await fill('experienceTitle', '1');
       await fill('experienceWork', '1');
-      await fill('experienceDeliverable', '1');
-      await fill('experienceCollaboration', '1');
-      await click('save-experience');
+      await click('experience-next');
       assert.match(await page.locator('.expression-warning').innerText(), /不能只填数字/);
       assert.equal((await stored('portfolioExperiences')).length, 0);
     });
-    await check('完整经历可以保存并保留原始字段', async () => {
+    await check('五步经历素材整理可以保存并保留原始字段', async () => {
       await fillValidExperience();
       await click('save-experience');
       const records = await stored('portfolioExperiences');
@@ -63,6 +66,10 @@ async function fillValidExperience() {
     });
     await check('材料只在用户说明后显示，不伪装成已验证', async () => {
       await click('edit-experience');
+      await click('experience-next');
+      await click('experience-next');
+      await click('experience-next');
+      await click('experience-next');
       await select('experienceMaterialType', 'document');
       await fill('experienceMaterialDetail', '需求说明文档第 2 版。');
       await click('save-experience');

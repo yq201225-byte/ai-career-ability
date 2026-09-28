@@ -631,12 +631,49 @@
     if (data.materialType !== 'none' && !meaningfulText(data.materialDetail, 4)) errors.push('选择有材料后，请说明材料是什么，方便你之后回看。');
     return errors;
   }
+  function captureExperienceEditor() {
+    if (!state.experienceEditor) return;
+    const fields = {
+      title: 'experienceTitle', role: 'experienceRole', work: 'experienceWork', deliverable: 'experienceDeliverable',
+      result: 'experienceResult', collaboration: 'experienceCollaboration', materialType: 'experienceMaterialType', materialDetail: 'experienceMaterialDetail'
+    };
+    Object.entries(fields).forEach(([key, field]) => {
+      const element = document.querySelector(`[data-field="${field}"]`);
+      if (element) state.experienceEditor[key] = element.value.trim();
+    });
+  }
+  function experienceStepErrors(item, step) {
+    if (step === 0) {
+      const errors = [];
+      if (!meaningfulText(item.title, 4)) errors.push('先给这段经历起一个能看懂的名称，例如“知识库问答需求整理”。');
+      if (!item.role) errors.push('请选择你在这段经历中的角色范围。');
+      if (!meaningfulText(item.work, 8)) errors.push('请用一句完整的话说明你实际做了什么，不能只填数字、符号或单个词。');
+      return errors;
+    }
+    if (step === 1 && !meaningfulText(item.deliverable, 5)) return ['请写清交付了什么，例如访谈纪要、需求说明、原型或测试记录。'];
+    if (step === 2 && !item.result) return ['请选择结果与观察；没有量化结果时可以选“暂无可量化结果”。'];
+    if (step === 3 && !meaningfulText(item.collaboration, 5)) return ['请说明协作范围，避免把团队工作误写成个人完成。'];
+    if (step === 4) {
+      if (!item.materialType) return ['请选择材料说明。'];
+      if (item.materialType !== 'none' && !meaningfulText(item.materialDetail, 4)) return ['选择有材料后，请说明材料是什么，方便你之后回看。'];
+    }
+    return [];
+  }
   function experienceForm() {
-    const item = state.experienceEditor || { title: '', role: '', work: '', deliverable: '', result: '', collaboration: '', materialType: 'none', materialDetail: '' };
+    const item = state.experienceEditor || { title: '', role: '', work: '', deliverable: '', result: '', collaboration: '', materialType: 'none', materialDetail: '', step: 0 };
+    const step = Math.max(0, Math.min(4, item.step || 0));
     const errors = item.errors || [];
     const option = (value, label) => `<option value="${value}" ${item.role === value ? 'selected' : ''}>${label}</option>`;
     const materialOption = (value, label) => `<option value="${value}" ${item.materialType === value ? 'selected' : ''}>${label}</option>`;
-    return page(`<section class="experience-editor"><p class="eyebrow">我的经历</p><h1 class="hero-title">把你做过的内容，<br>先完整地留下来。</h1><p class="portfolio-intro">这里保存的是你的原始陈述，不会自动把它包装成更厉害的说法。</p>${errors.length ? `<div class="expression-warning"><b>还不能保存</b>${errors.map(error => `<p>${esc(error)}</p>`).join('')}</div>` : ''}<div class="experience-form glass-card"><label>这段经历叫什么？<input data-field="experienceTitle" value="${esc(item.title)}" placeholder="例如：知识库问答需求整理"></label><label>我的角色范围<select data-field="experienceRole"><option value="">请选择</option>${option('参与', '参与一个明确环节')}${option('协助', '协助推进一个明确环节')}${option('负责模块', '负责一个明确模块')}</select></label><label>我实际做了什么？<textarea data-field="experienceWork" placeholder="例如：整理用户访谈中的高频问题，并归纳首轮澄清需求。">${esc(item.work)}</textarea></label><label>我交付了什么？<textarea data-field="experienceDeliverable" placeholder="例如：访谈问题清单、需求说明和首轮页面流程图。">${esc(item.deliverable)}</textarea></label><label>结果或观察<select data-field="experienceResult"><option value="">请选择</option><option value="暂无可量化结果" ${item.result === '暂无可量化结果' ? 'selected' : ''}>暂无可量化结果</option><option value="收集到用户反馈" ${item.result === '收集到用户反馈' ? 'selected' : ''}>收集到用户反馈</option><option value="完成一次内部评审" ${item.result === '完成一次内部评审' ? 'selected' : ''}>完成一次内部评审</option></select></label><label>协作范围<textarea data-field="experienceCollaboration" placeholder="例如：我负责整理与初稿；最终方案由产品和研发共同评审。">${esc(item.collaboration)}</textarea></label><label>材料说明<select data-field="experienceMaterialType">${materialOption('none', '暂无材料说明')}${materialOption('link', '有链接')}${materialOption('document', '有文档')}${materialOption('screenshot', '有截图')}</select></label>${item.materialType !== 'none' ? `<label>材料是什么？<textarea data-field="experienceMaterialDetail" placeholder="例如：需求说明文档第 2 版，或原型截图中的首轮流程。">${esc(item.materialDetail)}</textarea></label>` : ''}<div class="action-row">${button('保存经历', 'save-experience')}${button('取消', 'open-experiences', { className: 'ghost' })}</div></div></section>`, { useNav: false, useBack: true });
+    const steps = ['职责范围', '交付内容', '结果与观察', '协作边界', '材料说明'];
+    const content = [
+      `<div class="step-copy"><span>第 1 步</span><h2>你在这段经历中做了什么？</h2><p>先写清你的范围和亲自完成的动作，后面写草稿时才不会把“参与”放大成“主导”。</p></div><label>这段经历叫什么？<input data-field="experienceTitle" value="${esc(item.title)}" placeholder="例如：知识库问答需求整理"></label><label>我的角色范围<select data-field="experienceRole"><option value="">请选择</option>${option('参与', '参与一个明确环节')}${option('协助', '协助推进一个明确环节')}${option('负责模块', '负责一个明确模块')}</select></label><label>我实际做了什么？<textarea data-field="experienceWork" placeholder="例如：整理用户访谈中的高频问题，并归纳首轮澄清需求。">${esc(item.work)}</textarea></label>`,
+      `<div class="step-copy"><span>第 2 步</span><h2>你交付了什么内容？</h2><p>写下能被具体描述的产物，不需要把普通工作包装成“完整项目”。</p></div><label>我的交付内容<textarea data-field="experienceDeliverable" placeholder="例如：访谈问题清单、需求说明和首轮页面流程图。">${esc(item.deliverable)}</textarea></label><div class="step-example"><b>可以写什么</b><span>文档、原型、流程、页面、测试记录、内容方案或其他具体产物。</span></div>`,
+      `<div class="step-copy"><span>第 3 步</span><h2>结果或观察是什么？</h2><p>有明确结果就如实选择；没有数据也可以保留“暂无可量化结果”。</p></div><label>结果或观察<select data-field="experienceResult"><option value="">请选择</option><option value="暂无可量化结果" ${item.result === '暂无可量化结果' ? 'selected' : ''}>暂无可量化结果</option><option value="收集到用户反馈" ${item.result === '收集到用户反馈' ? 'selected' : ''}>收集到用户反馈</option><option value="完成一次内部评审" ${item.result === '完成一次内部评审' ? 'selected' : ''}>完成一次内部评审</option></select></label><div class="step-example neutral"><b>不必凑结果</b><span>系统不会把“暂无”当作缺点，也不会替你补造数据或成效。</span></div>`,
+      `<div class="step-copy"><span>第 4 步</span><h2>这件事和谁一起完成？</h2><p>说明个人与团队的边界，让以后每一句表达都能对应你实际承担的部分。</p></div><label>协作范围<textarea data-field="experienceCollaboration" placeholder="例如：我负责整理与初稿；最终方案由产品和研发共同评审。">${esc(item.collaboration)}</textarea></label>`,
+      `<div class="step-copy"><span>第 5 步</span><h2>有什么材料说明过程？</h2><p>材料只保存你的说明，帮助你以后回看；它不代表平台已经核验真实性。</p></div><label>材料说明<select data-field="experienceMaterialType">${materialOption('none', '暂无材料说明')}${materialOption('link', '有链接')}${materialOption('document', '有文档')}${materialOption('screenshot', '有截图')}</select></label>${item.materialType !== 'none' ? `<label>材料是什么？<textarea data-field="experienceMaterialDetail" placeholder="例如：需求说明文档第 2 版，或原型截图中的首轮流程。">${esc(item.materialDetail)}</textarea></label>` : ''}<div class="step-example neutral"><b>完成后会得到什么</b><span>一条可编辑的经历素材；之后可以从草稿编辑台选择它作为来源。</span></div>`
+    ];
+    return page(`<section class="experience-editor guided-experience"><p class="eyebrow">经历素材整理</p><h1 class="hero-title">把一段经历，<br>慢慢整理清楚。</h1><p class="portfolio-intro">五类信息帮你留住原始内容；它不会认证真实性，也不会自动生成对外表达。</p><div class="experience-progress" aria-label="经历素材整理进度">${steps.map((label, index) => `<span class="${index < step ? 'done' : index === step ? 'current' : ''}"><i>${index < step ? '✓' : index + 1}</i><b>${esc(label)}</b></span>`).join('')}</div>${errors.length ? `<div class="expression-warning"><b>这一项还需要补充</b>${errors.map(error => `<p>${esc(error)}</p>`).join('')}</div>` : ''}<div class="experience-form experience-step-card glass-card">${content[step]}<div class="experience-step-actions">${step > 0 ? button('上一步', 'experience-previous', { className: 'ghost' }) : button('取消', 'open-experiences', { className: 'ghost' })}${step === 4 ? button('保存为经历素材', 'save-experience') : button('继续', 'experience-next')}</div></div></section>`, { useNav: false, useBack: true });
   }
   function experiences() {
     const items = state.portfolioExperiences;
@@ -991,15 +1028,27 @@
     else if (action === 'start-practice') { state.practice = { step: 0, responses: [], attempts: [], draft: '', feedback: null, target: targetPlan().id }; move('practice'); }
     else if (action === 'start-composite') move('practice-hub');
     else if (action === 'open-experiences') move('portfolio-experiences');
-    else if (action === 'new-experience') { state.experienceEditor = { title: '', role: '', work: '', deliverable: '', result: '', collaboration: '', materialType: 'none', materialDetail: '', errors: [] }; move('portfolio-experience-form'); }
-    else if (action === 'edit-experience') { state.experienceEditor = { ...clone(state.portfolioExperiences[Number(node.dataset.index)]), errors: [] }; move('portfolio-experience-form'); }
+    else if (action === 'new-experience') { state.experienceEditor = { title: '', role: '', work: '', deliverable: '', result: '', collaboration: '', materialType: 'none', materialDetail: '', step: 0, errors: [] }; move('portfolio-experience-form'); }
+    else if (action === 'edit-experience') { state.experienceEditor = { ...clone(state.portfolioExperiences[Number(node.dataset.index)]), step: 0, errors: [] }; move('portfolio-experience-form'); }
+    else if (action === 'experience-next') {
+      captureExperienceEditor();
+      const step = state.experienceEditor.step || 0;
+      state.experienceEditor.errors = experienceStepErrors(state.experienceEditor, step);
+      if (state.experienceEditor.errors.length) flash('先补齐这一类信息，再继续。');
+      else { state.experienceEditor.step = step + 1; state.experienceEditor.errors = []; }
+    }
+    else if (action === 'experience-previous') {
+      captureExperienceEditor();
+      state.experienceEditor.step = Math.max(0, (state.experienceEditor.step || 0) - 1);
+      state.experienceEditor.errors = [];
+    }
     else if (action === 'save-experience') {
-      const previous = state.experienceEditor || {};
-      const item = { ...previous, title: input('experienceTitle'), role: input('experienceRole'), work: input('experienceWork'), deliverable: input('experienceDeliverable'), result: input('experienceResult'), collaboration: input('experienceCollaboration'), materialType: input('experienceMaterialType'), materialDetail: input('experienceMaterialDetail') };
+      captureExperienceEditor();
+      const item = { ...(state.experienceEditor || {}) };
       item.errors = experienceValidation(item);
       if (item.errors.length) { state.experienceEditor = item; flash('请先补齐这段经历的关键信息。'); }
       else {
-        item.id = item.id || uid('experience'); item.createdAt = item.createdAt || now(); item.updatedAt = now(); delete item.errors;
+        item.id = item.id || uid('experience'); item.createdAt = item.createdAt || now(); item.updatedAt = now(); delete item.errors; delete item.step;
         const index = state.portfolioExperiences.findIndex(record => record.id === item.id);
         if (index > -1) state.portfolioExperiences[index] = item; else state.portfolioExperiences.unshift(item);
         state.experienceEditor = null; move('portfolio-experiences', { history: false }); flash('经历已保存。之后可在草稿中选择它作为来源。');
